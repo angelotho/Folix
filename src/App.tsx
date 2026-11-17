@@ -25,12 +25,18 @@ import { SidebarToc } from './components/SidebarToc';
 import { MarkdownViewer } from './components/MarkdownViewer';
 import { SearchBar } from './components/SearchBar';
 import { ImageLightbox } from './components/ImageLightbox';
+import { DocumentLoader } from './components/DocumentLoader';
 import { SettingsModal } from './components/SettingsModal';
 import { SplashScreen } from './components/SplashScreen';
 import { ToastContainer } from './components/ToastContainer';
 
 function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getFileNameHint(filePath: string): string | undefined {
+  const parts = filePath.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1];
 }
 
 export default function App() {
@@ -63,7 +69,12 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashExiting, setSplashExiting] = useState(false);
   const [splashStillLoading, setSplashStillLoading] = useState(false);
+  const [loadingDocInfo, setLoadingDocInfo] = useState<{
+    fileName?: string;
+  } | null>(null);
 
+  const loadingDocTimerRef = useRef<number | null>(null);
+  const loadingRequestIdRef = useRef(0);
   const hasMountedThemeRef = useRef(false);
   const themeTransitionTimerRef = useRef<number | null>(null);
   const dragCounterRef = useRef(0);
@@ -266,7 +277,21 @@ export default function App() {
     const unsubMax = window.folixAPI.onMaximizedChange(setIsMaximized);
     const unsubTheme = window.folixAPI.onSystemThemeChange(setSystemTheme);
     const unsubOpenFile = window.folixAPI.onOpenFileResult((res) => {
+      if (!res.ok) {
+        applyFileReadResult(res);
+        return;
+      }
+      const reqId = ++loadingRequestIdRef.current;
+      if (loadingDocTimerRef.current !== null) {
+        window.clearTimeout(loadingDocTimerRef.current);
+      }
+      setLoadingDocInfo({ fileName: res.data.fileName });
       applyFileReadResult(res);
+      loadingDocTimerRef.current = window.setTimeout(() => {
+        if (loadingRequestIdRef.current === reqId) {
+          setLoadingDocInfo(null);
+        }
+      }, 540);
     });
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -282,6 +307,9 @@ export default function App() {
       if (rafId2 !== null) window.cancelAnimationFrame(rafId2);
       if (minDelayTimer !== null) window.clearTimeout(minDelayTimer);
       if (exitTimer !== null) window.clearTimeout(exitTimer);
+      if (loadingDocTimerRef.current !== null) {
+        window.clearTimeout(loadingDocTimerRef.current);
+      }
       unsubMax();
       unsubTheme();
       unsubOpenFile();
@@ -289,60 +317,117 @@ export default function App() {
     };
   }, [applyFileReadResult]);
 
+  const runWithDocumentLoader = useCallback(
+    async (
+      fileNameHint: string | undefined,
+      task: () => Promise<boolean>
+    ) => {
+      const reqId = ++loadingRequestIdRef.current;
+      if (loadingDocTimerRef.current !== null) {
+        window.clearTimeout(loadingDocTimerRef.current);
+      }
+      setLoadingDocInfo({ fileName: fileNameHint });
+
+      const minVisualPromise = new Promise<void>((resolve) => {
+        loadingDocTimerRef.current = window.setTimeout(resolve, 540);
+      });
+
+      const succeeded = await task();
+      if (!succeeded) {
+        if (loadingDocTimerRef.current !== null) {
+          window.clearTimeout(loadingDocTimerRef.current);
+        }
+        if (loadingRequestIdRef.current === reqId) {
+          setLoadingDocInfo(null);
+        }
+        return;
+      }
+
+      await minVisualPromise;
+      if (loadingRequestIdRef.current === reqId) {
+        setLoadingDocInfo(null);
+      }
+    },
+    []
+  );
+
   const handleOpenFilesDialog = useCallback(async () => {
     const results = await window.folixAPI.openFilesDialog();
-    for (const res of results) {
-      applyFileReadResult(res);
-    }
-  }, [applyFileReadResult]);
+    if (results.length === 0) return;
+
+    const firstValid = results.find((r) => r.ok);
+    await runWithDocumentLoader(
+      firstValid?.ok ? firstValid.data.fileName : undefined,
+      async () => {
+        let openedAny = false;
+        for (const res of results) {
+          if (res.ok) openedAny = true;
+          applyFileReadResult(res);
+        }
+        return openedAny;
+      }
+    );
+  }, [applyFileReadResult, runWithDocumentLoader]);
 
   const handleOpenPath = useCallback(
     async (filePath: string) => {
-      const res = await window.folixAPI.readFile(filePath);
-      if (!res.ok) {
-        // If file no longer exists on disk, allow user to see exact reason
-        pushToast({
-          type: 'error',
-          title: 'Arquivo indisponível',
-          description: res.error,
-        });
-        return;
-      }
-      applyFileReadResult(res);
+      await runWithDocumentLoader(getFileNameHint(filePath), async () => {
+        const res = await window.folixAPI.readFile(filePath);
+        if (!res.ok) {
+          pushToast({
+            type: 'error',
+            title: 'Arquivo indisponível',
+            description: res.error,
+          });
+          return false;
+        }
+        applyFileReadResult(res);
+        return true;
+      });
     },
-    [applyFileReadResult, pushToast]
+    [applyFileReadResult, pushToast, runWithDocumentLoader]
   );
 
   const handleOpenRelativeLink = useCallback(
     async (relPath: string) => {
       if (!activeTab) return;
-      const res = await window.folixAPI.openRelativeFile(
-        activeTab.directory,
-        relPath
-      );
-      applyFileReadResult(res, res.anchor);
+      const cleanRel = relPath.split('#')[0];
+      await runWithDocumentLoader(getFileNameHint(cleanRel), async () => {
+        const res = await window.folixAPI.openRelativeFile(
+          activeTab.directory,
+          relPath
+        );
+        applyFileReadResult(res, res.anchor);
+        return res.ok;
+      });
     },
-    [activeTab, applyFileReadResult]
+    [activeTab, applyFileReadResult, runWithDocumentLoader]
   );
 
   const handleReloadActiveFile = useCallback(async () => {
     if (!activeTab) return;
-    const res = await window.folixAPI.readFile(activeTab.filePath);
-    if (!res.ok) {
-      pushToast({
-        type: 'error',
-        title: 'Falha ao recarregar',
-        description: res.error,
-      });
-      return;
-    }
-    applyFileReadResult(res);
-    pushToast({
-      type: 'info',
-      title: 'Documento atualizado',
-      description: `${activeTab.fileName} foi recarregado do disco.`,
-    }, 2600);
-  }, [activeTab, applyFileReadResult, pushToast]);
+    await runWithDocumentLoader(activeTab.fileName, async () => {
+      const res = await window.folixAPI.readFile(activeTab.filePath);
+      if (!res.ok) {
+        pushToast({
+          type: 'error',
+          title: 'Falha ao recarregar',
+          description: res.error,
+        });
+        return false;
+      }
+      applyFileReadResult(res);
+      pushToast(
+        {
+          type: 'info',
+          title: 'Documento atualizado',
+          description: `${activeTab.fileName} foi recarregado do disco.`,
+        },
+        2600
+      );
+      return true;
+    });
+  }, [activeTab, applyFileReadResult, pushToast, runWithDocumentLoader]);
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
@@ -598,19 +683,24 @@ export default function App() {
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (droppedFiles.length === 0) return;
 
-    for (const file of droppedFiles) {
-      const filePath = window.folixAPI.getPathForDroppedFile(file);
-      if (!filePath) {
-        pushToast({
-          type: 'warning',
-          title: 'Não foi possível ler o arquivo arrastado',
-          description: 'Tente abrir o arquivo usando o botão "Abrir arquivo".',
-        });
-        continue;
+    await runWithDocumentLoader(droppedFiles[0]?.name, async () => {
+      let openedAny = false;
+      for (const file of droppedFiles) {
+        const filePath = window.folixAPI.getPathForDroppedFile(file);
+        if (!filePath) {
+          pushToast({
+            type: 'warning',
+            title: 'Não foi possível ler o arquivo arrastado',
+            description: 'Tente abrir o arquivo usando o botão "Abrir arquivo".',
+          });
+          continue;
+        }
+        const res = await window.folixAPI.readFile(filePath);
+        if (res.ok) openedAny = true;
+        applyFileReadResult(res);
       }
-      const res = await window.folixAPI.readFile(filePath);
-      applyFileReadResult(res);
-    }
+      return openedAny;
+    });
   };
 
   return (
@@ -669,7 +759,12 @@ export default function App() {
       )}
 
       {/* Main Content Workspace */}
-      {activeTab ? (
+      {loadingDocInfo ? (
+        <DocumentLoader
+          fileName={loadingDocInfo.fileName}
+          resolvedTheme={resolvedTheme}
+        />
+      ) : activeTab ? (
         <div className="folix-print-root relative flex min-h-0 flex-1 overflow-hidden">
           {!isImmersive && (
             <SidebarToc

@@ -57,7 +57,7 @@ export function WelcomeScreen({
         {/* Identity Hero */}
         <div className="mb-3 flex items-center gap-2 rounded-full border border-folix-border bg-folix-surface px-3 py-1 text-[11.5px] font-medium text-folix-text-secondary shadow-folix-sm">
           <Sparkles size={12} className="text-folix-gold" />
-          <span>Folix 1.0.6 • Leitor Editorial Offline</span>
+          <span>Folix 1.0.8 • Leitor Editorial Offline</span>
         </div>
 
         <div className="mt-2 flex flex-col items-center text-center">

@@ -706,6 +706,53 @@ mark.folix-search-hit-active {
 }
 
 /* ============================================================================
+   Document Open Loading & Editorial Reveal Animations
+   ============================================================================ */
+
+@keyframes folixDocSheetReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.994);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes folixLoaderLogoFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.03);
+  }
+}
+
+@keyframes folixLoaderBarFill {
+  0% {
+    transform: scaleX(0.06);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.folix-doc-reveal {
+  animation: folixDocSheetReveal 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.folix-loader-logo {
+  animation: folixLoaderLogoFloat 1.5s ease-in-out infinite;
+}
+
+.folix-loader-bar {
+  transform-origin: left center;
+  animation: folixLoaderBarFill 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ============================================================================
    Print & Vector PDF Export Stylesheet (Editorial Light Paper Report)
    ============================================================================ */
 

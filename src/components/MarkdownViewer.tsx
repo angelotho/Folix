@@ -503,8 +503,9 @@ export function MarkdownViewer({
       className="folix-print-scroll flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-9"
     >
       <div
+        key={`${documentTab.id}:${documentTab.updatedAt}`}
         className={cn(
-          'folix-print-sheet mx-auto w-full rounded-2xl border border-folix-border bg-folix-surface px-7 py-9 shadow-folix-doc transition-all duration-200 sm:px-12 sm:py-12',
+          'folix-print-sheet folix-doc-reveal mx-auto w-full rounded-2xl border border-folix-border bg-folix-surface px-7 py-9 shadow-folix-doc transition-all duration-200 sm:px-12 sm:py-12',
           PAGE_WIDTH_CLASSES[settings.pageWidth]
         )}
       >

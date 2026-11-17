@@ -209,7 +209,7 @@ export function SplashScreen({
               isDark ? 'text-[#6E7282]' : 'text-[#86837B]'
             )}
           >
-            {isStillLoading ? 'Preparando documentos...' : 'Versão 1.0.6'}
+            {isStillLoading ? 'Preparando documentos...' : 'Versão 1.0.8'}
           </span>
         </div>
       </div>
