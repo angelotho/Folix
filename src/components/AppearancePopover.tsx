@@ -1,17 +1,21 @@
 import { useEffect, useRef } from 'react';
-import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
+import { Monitor, Moon, RotateCcw, Settings2, Sun } from 'lucide-react';
 import type {
   FontFamilyPreference,
   PageWidthPreference,
   ReaderSettings,
+  ResolvedTheme,
   ThemeMode,
 } from '../types/folix';
 import { DEFAULT_SETTINGS } from '../utils/storage';
 import { cn } from '../utils/format';
+import { ThemePreview } from './ThemePreview';
 
 interface AppearancePopoverProps {
   settings: ReaderSettings;
+  systemTheme: ResolvedTheme;
   onUpdate: (patch: Partial<ReaderSettings>) => void;
+  onOpenSettings: () => void;
   onClose: () => void;
 }
 
@@ -55,7 +59,9 @@ const WIDTH_OPTIONS: Array<{ value: PageWidthPreference; label: string }> = [
 
 export function AppearancePopover({
   settings,
+  systemTheme,
   onUpdate,
+  onOpenSettings,
   onClose,
 }: AppearancePopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -112,12 +118,12 @@ export function AppearancePopover({
         </button>
       </div>
 
-      {/* Theme Selector */}
+      {/* Theme Selector with Mini Previews */}
       <div className="mb-4">
         <label className="mb-1.5 block text-[12px] font-medium text-folix-text-secondary">
           Tema visual
         </label>
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-folix-bg p-1 border border-folix-border-subtle">
+        <div className="grid grid-cols-3 gap-1.5">
           {THEME_OPTIONS.map((opt) => {
             const Icon = opt.icon;
             const active = settings.theme === opt.value;
@@ -127,14 +133,26 @@ export function AppearancePopover({
                 type="button"
                 onClick={() => onUpdate({ theme: opt.value })}
                 className={cn(
-                  'flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12px] font-medium transition-all',
+                  'flex flex-col items-center rounded-xl border p-1.5 transition-all',
                   active
-                    ? 'bg-folix-surface text-folix-text shadow-folix-sm ring-1 ring-folix-border'
-                    : 'text-folix-text-secondary hover:text-folix-text'
+                    ? 'border-folix-accent bg-folix-accent-soft text-folix-text ring-1 ring-[var(--folix-accent-ring)]'
+                    : 'border-folix-border bg-folix-surface-elevated text-folix-text-secondary hover:border-folix-text-muted/40 hover:text-folix-text'
                 )}
               >
-                <Icon size={13} className={active ? 'text-folix-accent' : ''} />
-                <span>{opt.label}</span>
+                <div className="aspect-[16/10] w-full overflow-hidden rounded-md">
+                  <ThemePreview
+                    mode={opt.value}
+                    systemTheme={systemTheme}
+                    compact
+                  />
+                </div>
+                <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium leading-none">
+                  <Icon
+                    size={11}
+                    className={active ? 'text-folix-accent' : ''}
+                  />
+                  <span>{opt.label}</span>
+                </span>
               </button>
             );
           })}
@@ -226,6 +244,25 @@ export function AppearancePopover({
           <span>Padrão</span>
           <span>Ampliado</span>
         </div>
+      </div>
+
+      <div className="mt-3.5 border-t border-folix-border-subtle pt-3">
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            onOpenSettings();
+          }}
+          className="flex w-full items-center justify-between rounded-xl border border-folix-border bg-folix-surface-elevated px-3 py-2 text-[12px] font-medium text-folix-text-secondary transition-colors hover:border-folix-accent/45 hover:text-folix-text"
+        >
+          <span className="inline-flex items-center gap-2">
+            <Settings2 size={13.5} className="text-folix-accent" />
+            <span>Abrir todas as configurações</span>
+          </span>
+          <kbd className="rounded border border-folix-border bg-folix-surface px-1.5 py-0.5 font-mono text-[10px] text-folix-text-muted">
+            Ctrl+,
+          </kbd>
+        </button>
       </div>
     </div>
   );

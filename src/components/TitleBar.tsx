@@ -1,5 +1,16 @@
-import { FileText, Home, Minus, Plus, Square, Copy, X } from 'lucide-react';
-import type { DocumentTab } from '../types/folix';
+import {
+  Copy,
+  FileText,
+  Home,
+  Minus,
+  Moon,
+  Plus,
+  Settings,
+  Square,
+  Sun,
+  X,
+} from 'lucide-react';
+import type { DocumentTab, ResolvedTheme } from '../types/folix';
 import { cn } from '../utils/format';
 import { FolixLogo } from './FolixLogo';
 
@@ -7,10 +18,13 @@ interface TitleBarProps {
   tabs: DocumentTab[];
   activeTabId: string | null;
   isMaximized: boolean;
+  resolvedTheme: ResolvedTheme;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onShowWelcome: () => void;
   onOpenFiles: () => void;
+  onQuickToggleTheme: () => void;
+  onOpenSettings: () => void;
   onMinimize: () => void;
   onToggleMaximize: () => void;
   onCloseWindow: () => void;
@@ -20,10 +34,13 @@ export function TitleBar({
   tabs,
   activeTabId,
   isMaximized,
+  resolvedTheme,
   onSelectTab,
   onCloseTab,
   onShowWelcome,
   onOpenFiles,
+  onQuickToggleTheme,
+  onOpenSettings,
   onMinimize,
   onToggleMaximize,
   onCloseWindow,
@@ -142,8 +159,34 @@ export function TitleBar({
         )}
       </div>
 
-      {/* Right: Native Windows 11 Caption Controls */}
+      {/* Right: Quick Theme, Settings & Native Windows 11 Caption Controls */}
       <div className="folix-no-drag flex h-full shrink-0 items-center">
+        <div className="mr-1 flex items-center gap-0.5 pr-1.5 border-r border-folix-border">
+          <button
+            type="button"
+            onClick={onQuickToggleTheme}
+            className="flex h-[28px] w-[28px] items-center justify-center rounded-lg text-folix-text-secondary transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
+            aria-label="Alternar tema claro ou escuro"
+            title={
+              resolvedTheme === 'dark'
+                ? 'Alternar para tema claro'
+                : 'Alternar para tema escuro'
+            }
+          >
+            {resolvedTheme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="flex h-[28px] items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-folix-text-secondary transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
+            aria-label="Abrir configurações de tema e leitura"
+            title="Configurações e temas (Ctrl+,)"
+          >
+            <Settings size={13.5} />
+            <span className="hidden md:inline">Configurações</span>
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={onMinimize}

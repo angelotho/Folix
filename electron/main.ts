@@ -195,8 +195,51 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
+type ThemePreference = 'light' | 'dark' | 'system';
+
+function getThemePreferencePath(): string {
+  return path.join(app.getPath('userData'), 'folix-theme.json');
+}
+
+function loadSavedThemePreference(): ThemePreference {
+  try {
+    const raw = fs.readFileSync(getThemePreferencePath(), 'utf8');
+    const parsed = JSON.parse(raw) as { theme?: string };
+    if (
+      parsed.theme === 'light' ||
+      parsed.theme === 'dark' ||
+      parsed.theme === 'system'
+    ) {
+      return parsed.theme;
+    }
+  } catch {
+    // Fallback to system when preference file does not exist yet
+  }
+  return 'system';
+}
+
+function saveThemePreference(theme: ThemePreference): void {
+  try {
+    fs.writeFileSync(
+      getThemePreferencePath(),
+      JSON.stringify({ theme }),
+      'utf8'
+    );
+  } catch {
+    // Ignore persistence write error gracefully
+  }
+}
+
+function resolveWindowBackgroundColor(theme: ThemePreference): string {
+  const isDark =
+    theme === 'dark' ||
+    (theme === 'system' && nativeTheme.shouldUseDarkColors);
+  return isDark ? '#0B0C10' : '#F4F2ED';
+}
+
 function createMainWindow(): BrowserWindow {
   const iconPath = path.join(__dirname, '..', 'build', 'icon.ico');
+  const initialTheme = loadSavedThemePreference();
 
   const win = new BrowserWindow({
     width: 1340,
@@ -205,7 +248,7 @@ function createMainWindow(): BrowserWindow {
     minHeight: 560,
     frame: false,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0B0C0F' : '#F5F4F0',
+    backgroundColor: resolveWindowBackgroundColor(initialTheme),
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -521,12 +564,25 @@ if (!gotTheLock) {
       return false;
     });
 
-    // System theme helper
+    // System theme & preference sync
     ipcMain.handle('theme:get-system', () => {
       return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
     });
 
+    ipcMain.handle(
+      'theme:set-preference',
+      (_event, theme: ThemePreference) => {
+        if (theme !== 'light' && theme !== 'dark' && theme !== 'system') return;
+        saveThemePreference(theme);
+        mainWindow?.setBackgroundColor(resolveWindowBackgroundColor(theme));
+      }
+    );
+
     nativeTheme.on('updated', () => {
+      const currentPreference = loadSavedThemePreference();
+      if (currentPreference === 'system') {
+        mainWindow?.setBackgroundColor(resolveWindowBackgroundColor('system'));
+      }
       mainWindow?.webContents.send(
         'theme:system-changed',
         nativeTheme.shouldUseDarkColors ? 'dark' : 'light'

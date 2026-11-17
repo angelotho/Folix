@@ -73,9 +73,11 @@ const folixAPI = {
   showInFolder: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke('shell:show-in-folder', filePath),
 
-  // System theme
+  // System theme & preference sync
   getSystemTheme: (): Promise<'light' | 'dark'> =>
     ipcRenderer.invoke('theme:get-system'),
+  setThemePreference: (theme: 'light' | 'dark' | 'system'): Promise<void> =>
+    ipcRenderer.invoke('theme:set-preference', theme),
   onSystemThemeChange: (callback: (theme: 'light' | 'dark') => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,

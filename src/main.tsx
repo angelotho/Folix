@@ -14,6 +14,13 @@ import '@fontsource/jetbrains-mono/500.css';
 
 import './styles/globals.css';
 import App from './App';
+import { loadReaderSettings, resolveInitialTheme } from './utils/storage';
+
+// Apply persisted or Windows system theme synchronously before first React paint
+const initialSettings = loadReaderSettings();
+const initialResolvedTheme = resolveInitialTheme(initialSettings.theme);
+document.documentElement.setAttribute('data-theme', initialResolvedTheme);
+document.documentElement.style.colorScheme = initialResolvedTheme;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

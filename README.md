@@ -6,7 +6,7 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.0.0-4F46E5?style=flat-square)
+![Versão](https://img.shields.io/badge/versão-1.0.3-4F46E5?style=flat-square)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -65,6 +65,7 @@ As famílias tipográficas (**Inter**, **Merriweather** e **JetBrains Mono**) s�
 | Atalho | Ação |
 | --- | --- |
 | `Ctrl + O` | Abrir documento(s) Markdown |
+| `Ctrl + ,` | Abrir Configurações e Temas |
 | `Ctrl + W` | Fechar aba atual |
 | `Ctrl + Tab` / `Ctrl + Shift + Tab` | Alternar entre abas abertas |
 | `Ctrl + B` | Mostrar ou recolher o sumário lateral |
@@ -114,7 +115,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.0.0.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.0.3.exe`).
 
 ### Comandos
 
@@ -131,7 +132,11 @@ npm.cmd run dist
 
 ---
 
-## Notas da Versão — v1.0.0
+## Notas da Versão
 
-- Lançamento inicial do **Folix 1.0.0** para Windows 11 (x64).
-- Implementação completa do leitor Markdown offline, sumário lateral, múltiplas abas, pesquisa interna, temas Claro/Escuro/Sistema, exportação vetorial para PDF, impressão nativa e instalador NSIS com associação de arquivos `.md`.
+### v1.0.3
+- Nova área de **Configurações** (`Ctrl + ,`) acessível em toda a aplicação, com cartões de prévia visual dos temas **Claro**, **Escuro** e **Sistema**.
+- Acompanhamento em tempo real das alterações de tema do Windows 11, transição suave sincronizada e inicialização direta sem piscadas.
+
+### v1.0.0
+- Lançamento inicial do **Folix** para Windows 11 (x64) com leitor Markdown offline, sumário lateral, múltiplas abas, pesquisa interna, exportação vetorial para PDF, impressão nativa e instalador NSIS com associação de arquivos `.md`.

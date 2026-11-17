@@ -1,16 +1,32 @@
-import type { ReaderSettings, RecentFile } from '../types/folix';
+import type {
+  ReaderSettings,
+  RecentFile,
+  ResolvedTheme,
+  ThemeMode,
+} from '../types/folix';
 
 const SETTINGS_KEY = 'folix.reader.settings.v1';
 const RECENT_FILES_KEY = 'folix.recent.files.v1';
 const MAX_RECENT_FILES = 8;
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
-  theme: 'light',
+  theme: 'system',
   fontFamily: 'inter',
   fontSize: 100,
   pageWidth: 'comfortable',
   sidebarOpen: true,
 };
+
+export function resolveInitialTheme(theme: ThemeMode): ResolvedTheme {
+  if (theme === 'light' || theme === 'dark') return theme;
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  } catch {
+    return 'light';
+  }
+}
 
 export function loadReaderSettings(): ReaderSettings {
   try {

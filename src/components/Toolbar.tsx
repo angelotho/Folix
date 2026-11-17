@@ -23,6 +23,7 @@ interface ToolbarProps {
   tocCount: number;
   settings: ReaderSettings;
   resolvedTheme: ResolvedTheme;
+  systemTheme: ResolvedTheme;
   isSearchOpen: boolean;
   isExportingPdf: boolean;
   onToggleSidebar: () => void;
@@ -31,6 +32,7 @@ interface ToolbarProps {
   onReloadFile: () => void;
   onShowInFolder: () => void;
   onUpdateSettings: (patch: Partial<ReaderSettings>) => void;
+  onOpenSettings: () => void;
   onExportPdf: () => void;
   onPrint: () => void;
 }
@@ -40,6 +42,7 @@ export function Toolbar({
   tocCount,
   settings,
   resolvedTheme,
+  systemTheme,
   isSearchOpen,
   isExportingPdf,
   onToggleSidebar,
@@ -48,6 +51,7 @@ export function Toolbar({
   onReloadFile,
   onShowInFolder,
   onUpdateSettings,
+  onOpenSettings,
   onExportPdf,
   onPrint,
 }: ToolbarProps) {
@@ -217,7 +221,9 @@ export function Toolbar({
           {appearanceOpen && (
             <AppearancePopover
               settings={settings}
+              systemTheme={systemTheme}
               onUpdate={onUpdateSettings}
+              onOpenSettings={onOpenSettings}
               onClose={() => setAppearanceOpen(false)}
             />
           )}

@@ -4,6 +4,7 @@
 
 :root,
 [data-theme='light'] {
+  color-scheme: light;
   --folix-bg: #f4f2ed;
   --folix-surface: #ffffff;
   --folix-surface-elevated: #faf9f6;
@@ -20,6 +21,8 @@
   --folix-accent-soft: rgba(79, 70, 229, 0.09);
   --folix-accent-ring: rgba(79, 70, 229, 0.28);
   --folix-gold: #d97706;
+  --folix-selection-bg: rgba(79, 70, 229, 0.18);
+  --folix-modal-backdrop: rgba(20, 20, 19, 0.36);
 
   --folix-code-bg: #f7f6f2;
   --folix-code-header: #efede6;
@@ -53,6 +56,7 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   --folix-bg: #0b0c10;
   --folix-surface: #111319;
   --folix-surface-elevated: #171a22;
@@ -60,19 +64,21 @@
   --folix-sidebar: #0e1015;
   --folix-titlebar: #090a0d;
   --folix-border: #222530;
-  --folix-border-subtle: rgba(255, 255, 255, 0.06);
+  --folix-border-subtle: rgba(255, 255, 255, 0.065);
   --folix-text: #ededef;
   --folix-text-secondary: #9b9ea8;
-  --folix-text-muted: #666a75;
+  --folix-text-muted: #6e727e;
   --folix-accent: #6366f1;
   --folix-accent-hover: #818cf8;
-  --folix-accent-soft: rgba(99, 102, 241, 0.15);
-  --folix-accent-ring: rgba(99, 102, 241, 0.35);
+  --folix-accent-soft: rgba(99, 102, 241, 0.16);
+  --folix-accent-ring: rgba(99, 102, 241, 0.36);
   --folix-gold: #f59e0b;
+  --folix-selection-bg: rgba(99, 102, 241, 0.32);
+  --folix-modal-backdrop: rgba(4, 5, 8, 0.68);
 
   --folix-code-bg: #0c0e13;
   --folix-code-header: #151821;
-  --folix-inline-code-bg: rgba(129, 140, 248, 0.12);
+  --folix-inline-code-bg: rgba(129, 140, 248, 0.13);
   --folix-inline-code-text: #a5b4fc;
   --folix-quote-bg: rgba(255, 255, 255, 0.025);
   --folix-table-header: #161922;
@@ -106,6 +112,11 @@
   border-color: var(--folix-border);
 }
 
+::selection {
+  background-color: var(--folix-selection-bg);
+  color: inherit;
+}
+
 html,
 body,
 #root {
@@ -115,7 +126,16 @@ body,
   background-color: var(--folix-bg);
   color: var(--folix-text);
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  transition: background-color 180ms ease, color 180ms ease;
+}
+
+/* Smooth synchronized transition applied transiently when switching themes */
+html.folix-theme-transition,
+html.folix-theme-transition *,
+html.folix-theme-transition *::before,
+html.folix-theme-transition *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 /* Custom subtle scrollbars */

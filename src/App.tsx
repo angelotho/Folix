@@ -15,6 +15,7 @@ import {
   loadReaderSettings,
   loadRecentFiles,
   removeRecentFile,
+  resolveInitialTheme,
   saveReaderSettings,
 } from './utils/storage';
 import { TitleBar } from './components/TitleBar';
@@ -24,6 +25,7 @@ import { SidebarToc } from './components/SidebarToc';
 import { MarkdownViewer } from './components/MarkdownViewer';
 import { SearchBar } from './components/SearchBar';
 import { ImageLightbox } from './components/ImageLightbox';
+import { SettingsModal } from './components/SettingsModal';
 import { ToastContainer } from './components/ToastContainer';
 
 function makeId(): string {
@@ -34,7 +36,9 @@ export default function App() {
   const [settings, setSettings] = useState<ReaderSettings>(() =>
     loadReaderSettings()
   );
-  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>('light');
+  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() =>
+    resolveInitialTheme('system')
+  );
   const [isMaximized, setIsMaximized] = useState(false);
 
   const [tabs, setTabs] = useState<DocumentTab[]>([]);
@@ -45,6 +49,7 @@ export default function App() {
 
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isImmersive, setIsImmersive] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<{
@@ -54,6 +59,8 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
+  const hasMountedThemeRef = useRef(false);
+  const themeTransitionTimerRef = useRef<number | null>(null);
   const dragCounterRef = useRef(0);
   const scrollPositionsRef = useRef<Map<string, number>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -95,10 +102,30 @@ export default function App() {
     });
   }, []);
 
-  // Apply resolved theme attribute to root HTML element
+  // Apply resolved theme attribute to root HTML element with smooth transient transition
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    const root = document.documentElement;
+    if (hasMountedThemeRef.current) {
+      root.classList.add('folix-theme-transition');
+      if (themeTransitionTimerRef.current !== null) {
+        window.clearTimeout(themeTransitionTimerRef.current);
+      }
+      themeTransitionTimerRef.current = window.setTimeout(() => {
+        root.classList.remove('folix-theme-transition');
+        themeTransitionTimerRef.current = null;
+      }, 240);
+    } else {
+      hasMountedThemeRef.current = true;
+    }
+
+    root.setAttribute('data-theme', resolvedTheme);
+    root.style.colorScheme = resolvedTheme;
   }, [resolvedTheme]);
+
+  // Keep Electron main process background color & persisted startup preference synced
+  useEffect(() => {
+    window.folixAPI.setThemePreference(settings.theme);
+  }, [settings.theme]);
 
   // Update window title
   useEffect(() => {
@@ -191,11 +218,18 @@ export default function App() {
       applyFileReadResult(res);
     });
 
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleMediaChange = (e: MediaQueryListEvent) => {
+      setSystemTheme(e.matches ? 'dark' : 'light');
+    };
+    mediaQuery.addEventListener('change', handleMediaChange);
+
     return () => {
       mounted = false;
       unsubMax();
       unsubTheme();
       unsubOpenFile();
+      mediaQuery.removeEventListener('change', handleMediaChange);
     };
   }, [applyFileReadResult]);
 
@@ -358,6 +392,12 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrlOrCmd = e.ctrlKey || e.metaKey;
 
+      if (ctrlOrCmd && e.key === ',') {
+        e.preventDefault();
+        setIsSettingsOpen((prev) => !prev);
+        return;
+      }
+
       if (ctrlOrCmd && e.key.toLowerCase() === 'o') {
         e.preventDefault();
         handleOpenFilesDialog();
@@ -438,7 +478,13 @@ export default function App() {
         return;
       }
 
-      if (e.key === 'Escape' && isImmersive && !isSearchOpen && !lightboxImage) {
+      if (
+        e.key === 'Escape' &&
+        isImmersive &&
+        !isSearchOpen &&
+        !isSettingsOpen &&
+        !lightboxImage
+      ) {
         e.preventDefault();
         setIsImmersive(false);
       }
@@ -453,6 +499,7 @@ export default function App() {
     settings.fontSize,
     isImmersive,
     isSearchOpen,
+    isSettingsOpen,
     lightboxImage,
     handleOpenFilesDialog,
     handleCloseTab,
@@ -522,10 +569,17 @@ export default function App() {
           tabs={tabs}
           activeTabId={activeTabId}
           isMaximized={isMaximized}
+          resolvedTheme={resolvedTheme}
           onSelectTab={(id) => setActiveTabId(id)}
           onCloseTab={handleCloseTab}
           onShowWelcome={() => setActiveTabId(null)}
           onOpenFiles={handleOpenFilesDialog}
+          onQuickToggleTheme={() =>
+            updateSettings({
+              theme: resolvedTheme === 'dark' ? 'light' : 'dark',
+            })
+          }
+          onOpenSettings={() => setIsSettingsOpen(true)}
           onMinimize={() => window.folixAPI.minimizeWindow()}
           onToggleMaximize={() => window.folixAPI.toggleMaximizeWindow()}
           onCloseWindow={() => window.folixAPI.closeWindow()}
@@ -539,6 +593,7 @@ export default function App() {
           tocCount={tocItems.length}
           settings={settings}
           resolvedTheme={resolvedTheme}
+          systemTheme={systemTheme}
           isSearchOpen={isSearchOpen}
           isExportingPdf={isExportingPdf}
           onToggleSidebar={() =>
@@ -549,6 +604,7 @@ export default function App() {
           onReloadFile={handleReloadActiveFile}
           onShowInFolder={() => window.folixAPI.showInFolder(activeTab.filePath)}
           onUpdateSettings={updateSettings}
+          onOpenSettings={() => setIsSettingsOpen(true)}
           onExportPdf={handleExportPdf}
           onPrint={handlePrint}
         />
@@ -635,6 +691,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        settings={settings}
+        systemTheme={systemTheme}
+        onUpdate={updateSettings}
+        onClose={() => setIsSettingsOpen(false)}
+      />
 
       {/* Image Lightbox Modal */}
       {lightboxImage && (

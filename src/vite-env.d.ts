@@ -24,6 +24,7 @@ export interface FolixAPI {
   openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
   showInFolder: (filePath: string) => Promise<boolean>;
   getSystemTheme: () => Promise<'light' | 'dark'>;
+  setThemePreference: (theme: 'light' | 'dark' | 'system') => Promise<void>;
   onSystemThemeChange: (callback: (theme: 'light' | 'dark') => void) => () => void;
 }
 
