@@ -26,6 +26,7 @@ import { MarkdownViewer } from './components/MarkdownViewer';
 import { SearchBar } from './components/SearchBar';
 import { ImageLightbox } from './components/ImageLightbox';
 import { SettingsModal } from './components/SettingsModal';
+import { SplashScreen } from './components/SplashScreen';
 import { ToastContainer } from './components/ToastContainer';
 
 function makeId(): string {
@@ -58,6 +59,10 @@ export default function App() {
   } | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashExiting, setSplashExiting] = useState(false);
+  const [splashStillLoading, setSplashStillLoading] = useState(false);
 
   const hasMountedThemeRef = useRef(false);
   const themeTransitionTimerRef = useRef<number | null>(null);
@@ -193,23 +198,69 @@ export default function App() {
     [pushToast]
   );
 
-  // Sync Electron window state, system theme, and Explorer launch files
+  // Sync Electron window state, system theme, Explorer launch files, and real startup readiness
   useEffect(() => {
     let mounted = true;
+    let exitTimer: number | null = null;
 
-    window.folixAPI.isWindowMaximized().then((state) => {
-      if (mounted) setIsMaximized(state);
+    const stillLoadingTimer = window.setTimeout(() => {
+      if (mounted) setSplashStillLoading(true);
+    }, 2700);
+
+    const maxStatePromise = window.folixAPI
+      .isWindowMaximized()
+      .then((state) => {
+        if (mounted) setIsMaximized(state);
+      })
+      .catch(() => undefined);
+
+    const systemThemePromise = window.folixAPI
+      .getSystemTheme()
+      .then((theme) => {
+        if (mounted) setSystemTheme(theme);
+      })
+      .catch(() => undefined);
+
+    const initialFilesPromise = window.folixAPI
+      .getInitialFiles()
+      .then((results) => {
+        if (!mounted) return;
+        for (const res of results) {
+          applyFileReadResult(res);
+        }
+      })
+      .catch(() => undefined);
+
+    const fontsReadyPromise =
+      document.fonts?.ready.catch(() => undefined) ?? Promise.resolve();
+
+    let minDelayTimer: number | null = null;
+    let rafId1: number | null = null;
+    let rafId2: number | null = null;
+    const minChoreographyPromise = new Promise<void>((resolve) => {
+      rafId1 = window.requestAnimationFrame(() => {
+        rafId2 = window.requestAnimationFrame(() => {
+          minDelayTimer = window.setTimeout(resolve, 2600);
+        });
+      });
     });
 
-    window.folixAPI.getSystemTheme().then((theme) => {
-      if (mounted) setSystemTheme(theme);
-    });
-
-    window.folixAPI.getInitialFiles().then((results) => {
+    Promise.all([
+      Promise.all([
+        maxStatePromise,
+        systemThemePromise,
+        initialFilesPromise,
+        fontsReadyPromise,
+      ]),
+      minChoreographyPromise,
+    ]).then(() => {
       if (!mounted) return;
-      for (const res of results) {
-        applyFileReadResult(res);
-      }
+      window.clearTimeout(stillLoadingTimer);
+      setSplashStillLoading(false);
+      setSplashExiting(true);
+      exitTimer = window.setTimeout(() => {
+        if (mounted) setShowSplash(false);
+      }, 480);
     });
 
     const unsubMax = window.folixAPI.onMaximizedChange(setIsMaximized);
@@ -226,6 +277,11 @@ export default function App() {
 
     return () => {
       mounted = false;
+      window.clearTimeout(stillLoadingTimer);
+      if (rafId1 !== null) window.cancelAnimationFrame(rafId1);
+      if (rafId2 !== null) window.cancelAnimationFrame(rafId2);
+      if (minDelayTimer !== null) window.clearTimeout(minDelayTimer);
+      if (exitTimer !== null) window.clearTimeout(exitTimer);
       unsubMax();
       unsubTheme();
       unsubOpenFile();
@@ -390,6 +446,7 @@ export default function App() {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (showSplash) return;
       const ctrlOrCmd = e.ctrlKey || e.metaKey;
 
       if (ctrlOrCmd && e.key === ',') {
@@ -493,6 +550,7 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    showSplash,
     activeTab,
     tabs,
     settings.sidebarOpen,
@@ -668,6 +726,7 @@ export default function App() {
       ) : (
         <WelcomeScreen
           recentFiles={recentFiles}
+          resolvedTheme={resolvedTheme}
           onOpenFiles={handleOpenFilesDialog}
           onOpenRecent={handleOpenPath}
           onRemoveRecent={(path) => setRecentFiles(removeRecentFile(path))}
@@ -712,6 +771,15 @@ export default function App() {
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Startup Splash Screen */}
+      {showSplash && (
+        <SplashScreen
+          resolvedTheme={resolvedTheme}
+          isExiting={splashExiting}
+          isStillLoading={splashStillLoading}
+        />
+      )}
     </div>
   );
 }

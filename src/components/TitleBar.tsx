@@ -66,7 +66,12 @@ export function TitleBar({
           )}
           title="Tela inicial do Folix"
         >
-          <FolixLogo size={18} className="shrink-0 transition-transform group-hover:scale-105" />
+          <FolixLogo
+            variant="symbol"
+            resolvedTheme={resolvedTheme}
+            size={19}
+            className="transition-transform group-hover:scale-105"
+          />
           <span className="text-[13px] font-semibold tracking-tight text-folix-text">
             Folix
           </span>

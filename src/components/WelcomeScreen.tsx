@@ -7,12 +7,13 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import type { RecentFile } from '../types/folix';
+import type { RecentFile, ResolvedTheme } from '../types/folix';
 import { formatRelativeDate } from '../utils/format';
 import { FolixLogo } from './FolixLogo';
 
 interface WelcomeScreenProps {
   recentFiles: RecentFile[];
+  resolvedTheme: ResolvedTheme;
   onOpenFiles: () => void;
   onOpenRecent: (filePath: string) => void;
   onRemoveRecent: (filePath: string) => void;
@@ -30,6 +31,7 @@ const SHORTCUTS = [
 
 export function WelcomeScreen({
   recentFiles,
+  resolvedTheme,
   onOpenFiles,
   onOpenRecent,
   onRemoveRecent,
@@ -55,18 +57,17 @@ export function WelcomeScreen({
         {/* Identity Hero */}
         <div className="mb-3 flex items-center gap-2 rounded-full border border-folix-border bg-folix-surface px-3 py-1 text-[11.5px] font-medium text-folix-text-secondary shadow-folix-sm">
           <Sparkles size={12} className="text-folix-gold" />
-          <span>Folix 1.0.3 • Leitor Editorial Offline</span>
+          <span>Folix 1.0.6 • Leitor Editorial Offline</span>
         </div>
 
         <div className="mt-2 flex flex-col items-center text-center">
-          <div className="mb-4 rounded-2xl p-1 shadow-folix-md ring-1 ring-folix-border bg-folix-surface">
-            <FolixLogo size={58} />
-          </div>
-
-          <h1 className="text-[32px] font-bold tracking-tight text-folix-text">
-            Folix
-          </h1>
-          <p className="mt-2 max-w-[490px] text-[15px] leading-relaxed text-folix-text-secondary">
+          <FolixLogo
+            variant="full"
+            resolvedTheme={resolvedTheme}
+            size={62}
+            className="mb-3"
+          />
+          <p className="mt-1 max-w-[490px] text-[15px] leading-relaxed text-folix-text-secondary">
             Transforme arquivos Markdown em documentos elegantes, organizados e
             prontos para leitura ou exportação profissional em PDF.
           </p>

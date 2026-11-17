@@ -8,11 +8,15 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const buildDir = path.join(rootDir, 'build');
 const publicDir = path.join(rootDir, 'public');
+const officialLogoPath = path.join(rootDir, 'src', 'assets', 'folix-official.png');
 
 fs.mkdirSync(buildDir, { recursive: true });
 fs.mkdirSync(publicDir, { recursive: true });
 
-// CRC32 table for valid PNG chunks
+// ============================================================================
+// PNG & ICO Codec Helpers (zero external dependencies)
+// ============================================================================
+
 const crcTable = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
   let c = n;
@@ -40,19 +44,85 @@ function makePngChunk(type, data) {
   return Buffer.concat([lenBuf, combined, crcBuf]);
 }
 
+function decodePng(filePath) {
+  const buf = fs.readFileSync(filePath);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = 2;
+  const idat = [];
+
+  while (offset < buf.length) {
+    const len = buf.readUInt32BE(offset);
+    const type = buf.toString('ascii', offset + 4, offset + 8);
+    const data = buf.subarray(offset + 8, offset + 8 + len);
+    if (type === 'IHDR') {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      colorType = data[9];
+    } else if (type === 'IDAT') {
+      idat.push(data);
+    }
+    offset += 12 + len;
+  }
+
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const bpp = colorType === 6 ? 4 : 3;
+  const stride = width * bpp;
+  const pixels = Buffer.alloc(width * height * bpp);
+
+  function paeth(a, b, c) {
+    const p = a + b - c;
+    const pa = Math.abs(p - a);
+    const pb = Math.abs(p - b);
+    const pc = Math.abs(p - c);
+    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+  }
+
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)];
+    const rowIn = y * (stride + 1) + 1;
+    const rowOut = y * stride;
+    for (let i = 0; i < stride; i++) {
+      const x = raw[rowIn + i];
+      const a = i >= bpp ? pixels[rowOut + i - bpp] : 0;
+      const b = y > 0 ? pixels[rowOut - stride + i] : 0;
+      const c = y > 0 && i >= bpp ? pixels[rowOut - stride + i - bpp] : 0;
+      let val = x;
+      if (filter === 1) val = (x + a) & 255;
+      else if (filter === 2) val = (x + b) & 255;
+      else if (filter === 3) val = (x + ((a + b) >> 1)) & 255;
+      else if (filter === 4) val = (x + paeth(a, b, c)) & 255;
+      pixels[rowOut + i] = val;
+    }
+  }
+
+  // Normalize to RGBA
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    const src = i * bpp;
+    const dst = i * 4;
+    rgba[dst] = pixels[src];
+    rgba[dst + 1] = pixels[src + 1];
+    rgba[dst + 2] = pixels[src + 2];
+    rgba[dst + 3] = bpp === 4 ? pixels[src + 3] : 255;
+  }
+
+  return { width, height, rgba };
+}
+
 function encodePng(width, height, rgba) {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
+  ihdr[8] = 8;
+  ihdr[9] = 6;
   ihdr[10] = 0;
   ihdr[11] = 0;
   ihdr[12] = 0;
 
-  // Add filter byte 0 per scanline
   const stride = width * 4;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
@@ -89,14 +159,13 @@ function encodeDib(width, height, rgba) {
   for (let y = height - 1; y >= 0; y--) {
     for (let x = 0; x < width; x++) {
       const srcIdx = (y * width + x) * 4;
-      buf[offset++] = rgba[srcIdx + 2]; // B
-      buf[offset++] = rgba[srcIdx + 1]; // G
-      buf[offset++] = rgba[srcIdx];     // R
-      buf[offset++] = rgba[srcIdx + 3]; // A
+      buf[offset++] = rgba[srcIdx + 2];
+      buf[offset++] = rgba[srcIdx + 1];
+      buf[offset++] = rgba[srcIdx];
+      buf[offset++] = rgba[srcIdx + 3];
     }
   }
 
-  // AND mask (bottom-up)
   const andStart = headerSize + xorSize;
   for (let y = height - 1; y >= 0; y--) {
     const rowOffset = andStart + (height - 1 - y) * andRowStride;
@@ -113,150 +182,11 @@ function encodeDib(width, height, rgba) {
   return buf;
 }
 
-function clamp(v, min = 0, max = 1) {
-  return Math.max(min, Math.min(max, v));
-}
-
-function smoothstep(edge0, edge1, x) {
-  const t = clamp((x - edge0) / (edge1 - edge0));
-  return t * t * (3 - 2 * t);
-}
-
-function sdRoundedRect(px, py, cx, cy, halfW, halfH, r) {
-  const dx = Math.abs(px - cx) - (halfW - r);
-  const dy = Math.abs(py - cy) - (halfH - r);
-  const ox = Math.max(dx, 0);
-  const oy = Math.max(dy, 0);
-  return Math.hypot(ox, oy) + Math.min(Math.max(dx, dy), 0) - r;
-}
-
-function blendPixel(out, idx, r, g, b, a) {
-  if (a <= 0) return;
-  const srcA = clamp(a);
-  const dstA = out[idx + 3] / 255;
-  const outA = srcA + dstA * (1 - srcA);
-  if (outA <= 0) return;
-
-  out[idx] = Math.round((r * srcA + out[idx] * dstA * (1 - srcA)) / outA);
-  out[idx + 1] = Math.round((g * srcA + out[idx + 1] * dstA * (1 - srcA)) / outA);
-  out[idx + 2] = Math.round((b * srcA + out[idx + 2] * dstA * (1 - srcA)) / outA);
-  out[idx + 3] = Math.round(outA * 255);
-}
-
-/**
- * Render the Folix emblem at arbitrary resolution in normalized [0..1] space
- * with 4x4 supersampling for crisp anti-aliased edges.
- */
-function renderFolixIcon(size) {
-  const rgba = Buffer.alloc(size * size * 4);
-  const sub = 4;
-  const aa = 1.1 / size;
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let accR = 0;
-      let accG = 0;
-      let accB = 0;
-      let accA = 0;
-
-      for (let sy = 0; sy < sub; sy++) {
-        for (let sx = 0; sx < sub; sx++) {
-          const nx = (x + (sx + 0.5) / sub) / size;
-          const ny = (y + (sy + 0.5) / sub) / size;
-
-          // Base squircle background
-          const bgDist = sdRoundedRect(nx, ny, 0.5, 0.5, 0.44, 0.44, 0.14);
-          const bgMask = 1 - smoothstep(-aa, aa, bgDist);
-
-          let pr = 0;
-          let pg = 0;
-          let pb = 0;
-          let pa = 0;
-
-          if (bgMask > 0) {
-            // Deep Sapphire-Indigo editorial gradient
-            const grad = clamp(0.15 * nx + 0.85 * ny);
-            const radial = clamp(1 - Math.hypot(nx - 0.3, ny - 0.22) * 1.15);
-
-            pr = 34 + (67 - 34) * (1 - grad) + radial * 28;
-            pg = 31 + (56 - 31) * (1 - grad) + radial * 26;
-            pb = 92 + (202 - 92) * (1 - grad) + radial * 48;
-            pa = bgMask;
-
-            // Subtle inner highlight border
-            const borderRing =
-              smoothstep(-0.018, -0.008, bgDist) * (1 - smoothstep(-0.006, 0.002, bgDist));
-            if (borderRing > 0) {
-              const bAlpha = borderRing * 0.28;
-              pr = pr * (1 - bAlpha) + 199 * bAlpha;
-              pg = pg * (1 - bAlpha) + 210 * bAlpha;
-              pb = pb * (1 - bAlpha) + 254 * bAlpha;
-            }
-
-            // Back folio sheet (subtle translucent indigo-white layer)
-            const backDist = sdRoundedRect(nx, ny, 0.545, 0.485, 0.175, 0.235, 0.036);
-            const backAlpha = (1 - smoothstep(-aa, aa, backDist)) * 0.24;
-            if (backAlpha > 0) {
-              pr = pr * (1 - backAlpha) + 224 * backAlpha;
-              pg = pg * (1 - backAlpha) + 231 * backAlpha;
-              pb = pb * (1 - backAlpha) + 255 * backAlpha;
-            }
-
-            // Main geometric "F" folio sheet
-            const stemDist = sdRoundedRect(nx, ny, 0.365, 0.5, 0.058, 0.24, 0.028);
-            const topBarDist = sdRoundedRect(nx, ny, 0.505, 0.318, 0.195, 0.058, 0.028);
-            const midBarDist = sdRoundedRect(nx, ny, 0.465, 0.495, 0.145, 0.052, 0.026);
-            const fDist = Math.min(stemDist, Math.min(topBarDist, midBarDist));
-            const fAlpha = 1 - smoothstep(-aa, aa, fDist);
-
-            if (fAlpha > 0) {
-              const fShade = clamp((ny - 0.25) / 0.55);
-              const fr = 255 - fShade * 12;
-              const fg = 255 - fShade * 10;
-              const fb = 255 - fShade * 2;
-              pr = pr * (1 - fAlpha) + fr * fAlpha;
-              pg = pg * (1 - fAlpha) + fg * fAlpha;
-              pb = pb * (1 - fAlpha) + fb * fAlpha;
-            }
-
-            // Warm Amber/Gold editorial bookmark accent on lower right
-            const dotDist = Math.hypot(nx - 0.645, ny - 0.675) - 0.056;
-            const dotAlpha = 1 - smoothstep(-aa, aa, dotDist);
-            if (dotAlpha > 0) {
-              pr = pr * (1 - dotAlpha) + 245 * dotAlpha;
-              pg = pg * (1 - dotAlpha) + 158 * dotAlpha;
-              pb = pb * (1 - dotAlpha) + 11 * dotAlpha;
-            }
-          }
-
-          accR += pr * pa;
-          accG += pg * pa;
-          accB += pb * pa;
-          accA += pa;
-        }
-      }
-
-      const samples = sub * sub;
-      const idx = (y * size + x) * 4;
-      const avgA = accA / samples;
-      if (avgA > 0.001) {
-        rgba[idx] = Math.round(clamp(accR / accA, 0, 255));
-        rgba[idx + 1] = Math.round(clamp(accG / accA, 0, 255));
-        rgba[idx + 2] = Math.round(clamp(accB / accA, 0, 255));
-        rgba[idx + 3] = Math.round(clamp(avgA * 255, 0, 255));
-      }
-    }
-  }
-
-  return rgba;
-}
-
 function buildIco(entries) {
-  // entries: Array<{ size: number, data: Buffer }>
   const count = entries.length;
   const header = Buffer.alloc(6);
-  header.writeUInt16LE(0, 0); // reserved
-  header.writeUInt16LE(1, 2); // type 1 = ICO
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
   header.writeUInt16LE(count, 4);
 
   const dirEntries = [];
@@ -266,10 +196,10 @@ function buildIco(entries) {
     const dir = Buffer.alloc(16);
     dir[0] = entry.size >= 256 ? 0 : entry.size;
     dir[1] = entry.size >= 256 ? 0 : entry.size;
-    dir[2] = 0; // palette
-    dir[3] = 0; // reserved
-    dir.writeUInt16LE(1, 4); // planes
-    dir.writeUInt16LE(32, 6); // bpp
+    dir[2] = 0;
+    dir[3] = 0;
+    dir.writeUInt16LE(1, 4);
+    dir.writeUInt16LE(32, 6);
     dir.writeUInt32LE(entry.data.length, 8);
     dir.writeUInt32LE(offset, 12);
     dirEntries.push(dir);
@@ -279,44 +209,341 @@ function buildIco(entries) {
   return Buffer.concat([header, ...dirEntries, ...entries.map((e) => e.data)]);
 }
 
-const sizes = [16, 32, 48, 256];
-const icoEntries = [];
-let png256 = null;
+// ============================================================================
+// Image Processing Utilities
+// ============================================================================
 
-for (const s of sizes) {
-  const rgba = renderFolixIcon(s);
-  if (s === 256) {
-    png256 = encodePng(s, s, rgba);
-    icoEntries.push({ size: s, data: png256 });
-  } else {
-    icoEntries.push({ size: s, data: encodeDib(s, s, rgba) });
+function clamp(v, min = 0, max = 255) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function unmixFromCream(r, g, b, bgR, bgG, bgB, alpha) {
+  if (alpha <= 0.01) return [r, g, b];
+  const ur = clamp(Math.round((r - (1 - alpha) * bgR) / alpha));
+  const ug = clamp(Math.round((g - (1 - alpha) * bgG) / alpha));
+  const ub = clamp(Math.round((b - (1 - alpha) * bgB) / alpha));
+  return [ur, ug, ub];
+}
+
+function cropRgba(src, srcW, x0, y0, w, h) {
+  const out = Buffer.alloc(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    const sy = y0 + y;
+    for (let x = 0; x < w; x++) {
+      const sx = x0 + x;
+      const si = (sy * srcW + sx) * 4;
+      const di = (y * w + x) * 4;
+      out[di] = src[si];
+      out[di + 1] = src[si + 1];
+      out[di + 2] = src[si + 2];
+      out[di + 3] = src[si + 3];
+    }
+  }
+  return out;
+}
+
+function resizeRgba(src, srcW, srcH, dstW, dstH) {
+  const out = Buffer.alloc(dstW * dstH * 4);
+  const scaleX = srcW / dstW;
+  const scaleY = srcH / dstH;
+
+  for (let dy = 0; dy < dstH; dy++) {
+    const yStart = dy * scaleY;
+    const yEnd = (dy + 1) * scaleY;
+    const iy0 = Math.floor(yStart);
+    const iy1 = Math.min(srcH - 1, Math.floor(yEnd));
+
+    for (let dx = 0; dx < dstW; dx++) {
+      const xStart = dx * scaleX;
+      const xEnd = (dx + 1) * scaleX;
+      const ix0 = Math.floor(xStart);
+      const ix1 = Math.min(srcW - 1, Math.floor(xEnd));
+
+      let sumW = 0;
+      let sumA = 0;
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
+
+      for (let sy = iy0; sy <= iy1; sy++) {
+        const wy = Math.min(yEnd, sy + 1) - Math.max(yStart, sy);
+        if (wy <= 0) continue;
+        for (let sx = ix0; sx <= ix1; sx++) {
+          const wx = Math.min(xEnd, sx + 1) - Math.max(xStart, sx);
+          if (wx <= 0) continue;
+          const weight = wx * wy;
+          const si = (sy * srcW + sx) * 4;
+          const a = src[si + 3] / 255;
+          sumW += weight;
+          sumA += a * weight;
+          sumR += src[si] * a * weight;
+          sumG += src[si + 1] * a * weight;
+          sumB += src[si + 2] * a * weight;
+        }
+      }
+
+      const di = (dy * dstW + dx) * 4;
+      if (sumA > 0.001 && sumW > 0) {
+        const finalA = sumA / sumW;
+        out[di] = clamp(Math.round(sumR / sumA));
+        out[di + 1] = clamp(Math.round(sumG / sumA));
+        out[di + 2] = clamp(Math.round(sumB / sumA));
+        out[di + 3] = clamp(Math.round(finalA * 255));
+      }
+    }
+  }
+
+  return out;
+}
+
+function fitInSquare(src, srcW, srcH, targetSize, paddingRatio = 0.08) {
+  const maxDim = Math.round(targetSize * (1 - paddingRatio * 2));
+  const ratio = Math.min(maxDim / srcW, maxDim / srcH);
+  const w = Math.max(1, Math.round(srcW * ratio));
+  const h = Math.max(1, Math.round(srcH * ratio));
+  const resized = resizeRgba(src, srcW, srcH, w, h);
+
+  const canvas = Buffer.alloc(targetSize * targetSize * 4);
+  const ox = Math.floor((targetSize - w) / 2);
+  const oy = Math.floor((targetSize - h) / 2);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const si = (y * w + x) * 4;
+      const di = ((oy + y) * targetSize + (ox + x)) * 4;
+      canvas[di] = resized[si];
+      canvas[di + 1] = resized[si + 1];
+      canvas[di + 2] = resized[si + 2];
+      canvas[di + 3] = resized[si + 3];
+    }
+  }
+  return canvas;
+}
+
+// ============================================================================
+// Process Official Folix.png into Transparent Brand Assets & Windows Icons
+// ============================================================================
+
+const { width, height, rgba: rawRgba } = decodePng(officialLogoPath);
+const bgR = rawRgba[0];
+const bgG = rawRgba[1];
+const bgB = rawRgba[2];
+
+// 1. Flood-fill exterior background on the symbol side (x < 460)
+//    Barrier at y=809 between x=192..232 preserves the interior negative-space "F" inside the symbol!
+const outsideMask = new Uint8Array(width * height);
+const queue = new Int32Array(width * height);
+let qHead = 0;
+let qTail = 0;
+
+function isBgCandidate(idx) {
+  const p = idx * 4;
+  const dist = Math.hypot(
+    rawRgba[p] - bgR,
+    rawRgba[p + 1] - bgG,
+    rawRgba[p + 2] - bgB
+  );
+  return dist < 24;
+}
+
+function isFloodBarrier(x, y) {
+  return y === 809 && x >= 192 && x <= 232;
+}
+
+function tryEnqueue(x, y) {
+  if (x < 0 || x >= width || y < 0 || y >= height) return;
+  if (isFloodBarrier(x, y)) return;
+  const idx = y * width + x;
+  if (outsideMask[idx]) return;
+  if (!isBgCandidate(idx)) return;
+  outsideMask[idx] = 1;
+  queue[qTail++] = idx;
+}
+
+for (let x = 0; x < width; x++) {
+  tryEnqueue(x, 0);
+  tryEnqueue(x, height - 1);
+}
+for (let y = 0; y < height; y++) {
+  tryEnqueue(0, y);
+  tryEnqueue(width - 1, y);
+}
+
+while (qHead < qTail) {
+  const idx = queue[qHead++];
+  const x = idx % width;
+  const y = (idx - x) / width;
+  tryEnqueue(x + 1, y);
+  tryEnqueue(x - 1, y);
+  tryEnqueue(x, y + 1);
+  tryEnqueue(x, y - 1);
+}
+
+// 2. Build transparent Light Lockup and Dark Lockup
+const lightFull = Buffer.alloc(width * height * 4);
+const darkFull = Buffer.alloc(width * height * 4);
+
+for (let y = 0; y < height; y++) {
+  for (let x = 0; x < width; x++) {
+    const idx = y * width + x;
+    const p = idx * 4;
+    const r = rawRgba[p];
+    const g = rawRgba[p + 1];
+    const b = rawRgba[p + 2];
+    const dist = Math.hypot(r - bgR, g - bgG, b - bgB);
+
+    const isSymbolRegion = x < 460;
+
+    if (isSymbolRegion) {
+      if (outsideMask[idx]) {
+        // Exterior background: smooth alpha edge along outer shape boundary
+        const touchesFg =
+          (x > 0 && !outsideMask[idx - 1]) ||
+          (x < width - 1 && !outsideMask[idx + 1]) ||
+          (y > 0 && !outsideMask[idx - width]) ||
+          (y < height - 1 && !outsideMask[idx + width]);
+
+        if (touchesFg && dist > 6) {
+          const alpha = smoothstep(6, 36, dist);
+          const [ur, ug, ub] = unmixFromCream(r, g, b, bgR, bgG, bgB, alpha);
+          lightFull[p] = ur;
+          lightFull[p + 1] = ug;
+          lightFull[p + 2] = ub;
+          lightFull[p + 3] = clamp(Math.round(alpha * 255));
+        }
+      } else {
+        // Inside symbol: check if near edge of exterior flood-fill for crisp anti-aliasing
+        const nearOut =
+          (x > 0 && outsideMask[idx - 1]) ||
+          (x < width - 1 && outsideMask[idx + 1]) ||
+          (y > 0 && outsideMask[idx - width]) ||
+          (y < height - 1 && outsideMask[idx + width]) ||
+          (y >= 809 && x >= 192 && x <= 232 && dist < 35);
+
+        if (nearOut && dist < 85 && !(y < 809 && dist < 14)) {
+          const alpha = smoothstep(8, 70, dist);
+          const [ur, ug, ub] = unmixFromCream(r, g, b, bgR, bgG, bgB, alpha);
+          lightFull[p] = ur;
+          lightFull[p + 1] = ug;
+          lightFull[p + 2] = ub;
+          lightFull[p + 3] = clamp(Math.round(alpha * 255));
+        } else {
+          // Solid symbol interior (including crisp white "F" cutout!)
+          lightFull[p] = r;
+          lightFull[p + 1] = g;
+          lightFull[p + 2] = b;
+          lightFull[p + 3] = 255;
+        }
+      }
+
+      // Copy to Dark Lockup, gently lifting deep navy sheet so symbol reads clearly on dark surfaces
+      darkFull[p + 3] = lightFull[p + 3];
+      if (lightFull[p + 3] > 0) {
+        const sr = lightFull[p];
+        const sg = lightFull[p + 1];
+        const sb = lightFull[p + 2];
+        // Identify dark navy sheet pixels vs lavender corner or white "F"
+        const isDarkNavy = sr < 90 && sg < 90 && sb < 130;
+        if (isDarkNavy) {
+          darkFull[p] = clamp(sr + 22);
+          darkFull[p + 1] = clamp(sg + 22);
+          darkFull[p + 2] = clamp(sb + 40);
+        } else {
+          darkFull[p] = sr;
+          darkFull[p + 1] = sg;
+          darkFull[p + 2] = sb;
+        }
+      }
+    } else {
+      // Wordmark region ("Folix" + lavender i-leaf): remove all cream background (including inside "o")
+      const alpha = smoothstep(10, 62, dist);
+      if (alpha > 0.01) {
+        const [ur, ug, ub] = unmixFromCream(r, g, b, bgR, bgG, bgB, alpha);
+        const aByte = clamp(Math.round(alpha * 255));
+
+        lightFull[p] = ur;
+        lightFull[p + 1] = ug;
+        lightFull[p + 2] = ub;
+        lightFull[p + 3] = aByte;
+
+        // Dark variant: preserve lavender i-leaf (#9B99EE), convert dark letters to warm white (#F4F2ED)
+        const isLeaf = ub - ur > 45 && ub > 140;
+        if (isLeaf) {
+          darkFull[p] = ur;
+          darkFull[p + 1] = ug;
+          darkFull[p + 2] = ub;
+        } else {
+          darkFull[p] = 244;
+          darkFull[p + 1] = 242;
+          darkFull[p + 2] = 237;
+        }
+        darkFull[p + 3] = aByte;
+      }
+    }
   }
 }
 
-const icoBuffer = buildIco(icoEntries);
-fs.writeFileSync(path.join(buildDir, 'icon.ico'), icoBuffer);
+// 3. Export tight-cropped, padded assets
+// Symbol crop: x=142..440 (w=298), y=470..816 (h=346) -> fit into 380x380 square
+const symbolCropW = 298;
+const symbolCropH = 346;
+const symbolCropped = cropRgba(lightFull, width, 142, 470, symbolCropW, symbolCropH);
+const symbolSquare380 = fitInSquare(symbolCropped, symbolCropW, symbolCropH, 380, 0.06);
+fs.writeFileSync(path.join(publicDir, 'folix-symbol.png'), encodePng(380, 380, symbolSquare380));
+
+const symbolDarkCropped = cropRgba(darkFull, width, 142, 470, symbolCropW, symbolCropH);
+const symbolDarkSquare380 = fitInSquare(symbolDarkCropped, symbolCropW, symbolCropH, 380, 0.06);
+fs.writeFileSync(
+  path.join(publicDir, 'folix-symbol-dark.png'),
+  encodePng(380, 380, symbolDarkSquare380)
+);
+
+// Dark-ready symbol with subtle lifted navy for dark titlebars if needed (optional, keep symbol crisp)
+// Full lockup crop: x=136..1124 (w=988), y=468..818 (h=350)
+const fullCropW = 988;
+const fullCropH = 350;
+const lightFullCropped = cropRgba(lightFull, width, 136, 468, fullCropW, fullCropH);
+const darkFullCropped = cropRgba(darkFull, width, 136, 468, fullCropW, fullCropH);
+
+fs.writeFileSync(
+  path.join(publicDir, 'folix-logo-light.png'),
+  encodePng(fullCropW, fullCropH, lightFullCropped)
+);
+fs.writeFileSync(
+  path.join(publicDir, 'folix-logo-dark.png'),
+  encodePng(fullCropW, fullCropH, darkFullCropped)
+);
+
+// 4. Generate Windows application icon (build/icon.png & multi-res build/icon.ico)
+//    Give the Windows icon a refined subtle rounded badge backdrop or pure transparent official symbol?
+//    Keeping the official symbol on transparent background with 6% margin preserves exact shape & transparency!
+const icon256 = fitInSquare(symbolCropped, symbolCropW, symbolCropH, 256, 0.06);
+const png256 = encodePng(256, 256, icon256);
 fs.writeFileSync(path.join(buildDir, 'icon.png'), png256);
 
-const svgLogo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
-  <defs>
-    <linearGradient id="folixBg" x1="28" y1="20" x2="228" y2="236" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#4F46E5"/>
-      <stop offset="55%" stop-color="#3730A3"/>
-      <stop offset="100%" stop-color="#1E1B4B"/>
-    </linearGradient>
-    <linearGradient id="folixF" x1="78" y1="66" x2="178" y2="190" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="100%" stop-color="#E0E7FF"/>
-    </linearGradient>
-  </defs>
-  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#folixBg)"/>
-  <rect x="17" y="17" width="222" height="222" rx="51" stroke="#C7D2FE" stroke-opacity="0.28" stroke-width="2"/>
-  <rect x="96" y="64" width="90" height="120" rx="14" fill="#E0E7FF" fill-opacity="0.22"/>
-  <path d="M80 74C80 67.3726 85.3726 62 92 62H168C174.627 62 180 67.3726 180 74V78C180 84.6274 174.627 90 168 90H110V114H148C154.627 114 160 119.373 160 126V128C160 134.627 154.627 140 148 140H110V178C110 184.627 104.627 190 98 190H92C85.3726 190 80 184.627 80 178V74Z" fill="url(#folixF)"/>
-  <circle cx="165" cy="173" r="15" fill="#F59E0B"/>
+const icoSizes = [16, 32, 48, 256];
+const icoEntries = icoSizes.map((s) => {
+  if (s === 256) return { size: 256, data: png256 };
+  const resized = fitInSquare(symbolCropped, symbolCropW, symbolCropH, s, 0.04);
+  return { size: s, data: encodeDib(s, s, resized) };
+});
+fs.writeFileSync(path.join(buildDir, 'icon.ico'), buildIco(icoEntries));
+
+// 5. Update public/icon.svg faithfully representing the official Folix symbol
+const officialSymbolSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <path d="M48 54C48 34.1177 64.1177 18 84 18H160L208 66V182C208 212.928 182.928 238 152 238H84C64.1177 238 48 221.882 48 202V54Z" fill="#1C1C3D"/>
+  <path d="M160 18L208 66H178C168.059 66 160 57.9411 160 48V18Z" fill="#9B98EF"/>
+  <path d="M84 102C84 85.4315 97.4315 72 114 72H172C172 91.8823 155.882 108 136 108H106C93.8497 108 84 117.85 84 130V102Z" fill="#FCF9F7"/>
+  <path d="M84 150C84 133.431 97.4315 120 114 120H168C168 139.882 151.882 156 132 156H118C109.163 156 102 163.163 102 172V238H84V150Z" fill="#FCF9F7"/>
 </svg>
 `;
-fs.writeFileSync(path.join(publicDir, 'icon.svg'), svgLogo, 'utf8');
+fs.writeFileSync(path.join(publicDir, 'icon.svg'), officialSymbolSvg, 'utf8');
 
-console.log('Generated build/icon.ico, build/icon.png, and public/icon.svg');
-
+console.log(
+  'Generated official Folix brand assets: public/folix-symbol.png, public/folix-logo-light.png, public/folix-logo-dark.png, public/icon.svg, build/icon.png, build/icon.ico'
+);

@@ -6,7 +6,7 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.0.3-4F46E5?style=flat-square)
+![Versão](https://img.shields.io/badge/versão-1.0.6-4F46E5?style=flat-square)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -115,7 +115,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.0.3.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.0.6.exe`).
 
 ### Comandos
 
@@ -133,6 +133,10 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.0.6
+- Integração da identidade visual oficial do **Folix** (composição completa para temas Claro/Escuro, símbolo isolado, ícone Windows `.ico` multi-resolução e emblema vetorial).
+- Nova **Splash Screen** editorial animada integrada ao tema ativo e à prontidão real de inicialização da aplicação.
 
 ### v1.0.3
 - Nova área de **Configurações** (`Ctrl + ,`) acessível em toda a aplicação, com cartões de prévia visual dos temas **Claro**, **Escuro** e **Sistema**.
