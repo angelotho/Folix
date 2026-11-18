@@ -6,8 +6,8 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.1.1-4F46E5?style=flat-square)
-[![Download v1.1.1](https://img.shields.io/badge/download-Folix--Setup--1.1.1.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.1/Folix-Setup-1.1.1.exe)
+![Versão](https://img.shields.io/badge/versão-1.1.2-4F46E5?style=flat-square)
+[![Download v1.1.2](https://img.shields.io/badge/download-Folix--Setup--1.1.2.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.2/Folix-Setup-1.1.2.exe)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -26,8 +26,8 @@ Em vez de exibir sintaxe bruta, o Folix interpreta o arquivo e entrega uma exper
 
 ## Download (Instalador Windows)
 
-- **Download direto (v1.1.1 — x64)**: [Folix-Setup-1.1.1.exe](https://github.com/angelotho/Folix/releases/download/v1.1.1/Folix-Setup-1.1.1.exe)
-- **Página da Release**: [Folix v1.1.1](https://github.com/angelotho/Folix/releases/tag/v1.1.1)
+- **Download direto (v1.1.2 — x64)**: [Folix-Setup-1.1.2.exe](https://github.com/angelotho/Folix/releases/download/v1.1.2/Folix-Setup-1.1.2.exe)
+- **Página da Release**: [Folix v1.1.2](https://github.com/angelotho/Folix/releases/tag/v1.1.2)
 
 ---
 
@@ -123,7 +123,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.1.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.2.exe`).
 
 ### Comandos
 
@@ -141,6 +141,11 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.1.2
+- Sincronização estrutural bidirecional precisa entre os modos **Leitura** e **Edição** (e visualização **Dividida**) baseada no mapeamento linha-a-elemento da árvore Markdown (títulos, parágrafos, listas, tabelas, citações, imagens e blocos de código).
+- Posicionamento convergente antes da pintura no CodeMirror 6, eliminando desvios causados por estimativas de altura de blocos fora do viewport (`.cm-gap`) em documentos Markdown extensos e evitando saltos ou piscadas visuais durante a alternância de modo.
+- Preservação inteligente da posição ativa do cursor e sincronização contínua do sumário lateral durante a navegação e edição.
 
 ### v1.1.1
 - Novo modo de **Edição Markdown** integrado (alternância rápida **Leitura | Edição** via barra de ferramentas ou `Ctrl + Shift + E`) baseado em CodeMirror 6, com preservação por aba do histórico de desfazer/refazer (`Ctrl + Z`, `Ctrl + Y`, `Ctrl + Shift + Z`), cursor e rolagem.

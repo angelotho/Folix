@@ -11,8 +11,14 @@ import type {
   RecentFile,
   ResolvedTheme,
   ToastMessage,
+  ViewportSyncAnchor,
 } from './types/folix';
 import { extractTocFromMarkdown, getDocumentTitle } from './utils/slug';
+import {
+  applyAnchorToViewer,
+  captureViewerSyncAnchor,
+  resolveActiveHeadingForLine,
+} from './utils/scrollSync';
 import {
   addRecentFile,
   clearRecentFiles,
@@ -72,6 +78,9 @@ export default function App() {
 
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
   const [editorLayout, setEditorLayout] = useState<EditorLayout>('editor');
+  const editorLayoutRef = useRef(editorLayout);
+  editorLayoutRef.current = editorLayout;
+  const [viewerSyncRevision, setViewerSyncRevision] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
   const [pendingConfirm, setPendingConfirm] =
@@ -109,6 +118,9 @@ export default function App() {
   const scrollPositionsRef = useRef<Map<string, number>>(new Map());
   const editorScrollPositionsRef = useRef<Map<string, number>>(new Map());
   const editorStatesRef = useRef<Map<string, EditorState>>(new Map());
+  const pendingEditorSyncRef = useRef<Map<string, ViewportSyncAnchor>>(new Map());
+  const pendingViewerSyncRef = useRef<Map<string, ViewportSyncAnchor>>(new Map());
+  const suppressViewerRevealRef = useRef<Set<string>>(new Set());
   const editorHandleRef = useRef<MarkdownEditorHandle>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
@@ -145,7 +157,9 @@ export default function App() {
 
   const effectivePreviewContent = useMemo(() => {
     if (!activeTab) return '';
-    if (isPreparingPrint) return activeTab.content;
+    if (isPreparingPrint || (activeTab.mode ?? 'read') === 'read') {
+      return activeTab.content;
+    }
     if (debouncedPreview && debouncedPreview.tabId === activeTab.id) {
       return debouncedPreview.content;
     }
@@ -287,6 +301,9 @@ export default function App() {
               : prevTabs;
           }
           editorStatesRef.current.delete(existing.id);
+          pendingEditorSyncRef.current.delete(existing.id);
+          pendingViewerSyncRef.current.delete(existing.id);
+          suppressViewerRevealRef.current.delete(existing.id);
           return prevTabs.map((t) =>
             t.id === existing.id
               ? {
@@ -559,36 +576,54 @@ export default function App() {
     []
   );
 
-  const handleChangeMode = useCallback(
-    (nextMode: DocumentMode) => {
-      const tab = activeTabRef.current;
-      if (!tab || (tab.mode ?? 'read') === nextMode) return;
+  const handleChangeMode = useCallback((nextMode: DocumentMode) => {
+    const tab = activeTabRef.current;
+    if (!tab || (tab.mode ?? 'read') === nextMode) return;
 
-      const currentHeading = activeHeadingId;
-      const shouldJumpEditToHeading =
-        nextMode === 'edit' &&
-        !editorScrollPositionsRef.current.has(tab.id) &&
-        Boolean(currentHeading);
-
-      setTabs((prevTabs) =>
-        prevTabs.map((t) => (t.id === tab.id ? { ...t, mode: nextMode } : t))
+    if (nextMode === 'edit') {
+      const anchor = captureViewerSyncAnchor(
+        scrollContainerRef.current,
+        articleRef.current
       );
-
-      if (shouldJumpEditToHeading && currentHeading) {
-        const headingItem = tocItemsRef.current.find(
-          (item) => item.id === currentHeading
-        );
-        if (headingItem) {
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-              editorHandleRef.current?.scrollToLine(headingItem.line);
-            });
-          });
-        }
+      pendingEditorSyncRef.current.set(tab.id, anchor);
+      if (editorLayoutRef.current === 'split') {
+        pendingViewerSyncRef.current.set(tab.id, anchor);
+        setViewerSyncRevision((r) => r + 1);
       }
-    },
-    [activeHeadingId]
-  );
+      setTabs((prevTabs) =>
+        prevTabs.map((t) => (t.id === tab.id ? { ...t, mode: 'edit' } : t))
+      );
+      return;
+    }
+
+    const anchor = editorHandleRef.current?.captureSyncAnchor() ?? null;
+    if (anchor) {
+      pendingViewerSyncRef.current.set(tab.id, anchor);
+      const nextToc = extractTocFromMarkdown(tab.content);
+      setActiveHeadingId(resolveActiveHeadingForLine(nextToc, anchor.line));
+    }
+    suppressViewerRevealRef.current.add(tab.id);
+    setViewerSyncRevision((r) => r + 1);
+    setTabs((prevTabs) =>
+      prevTabs.map((t) => (t.id === tab.id ? { ...t, mode: 'read' } : t))
+    );
+  }, []);
+
+  const handleToggleSplitLayout = useCallback(() => {
+    const tab = activeTabRef.current;
+    const next: EditorLayout =
+      editorLayoutRef.current === 'split' ? 'editor' : 'split';
+    if (next === 'split' && tab && (tab.mode ?? 'read') === 'edit') {
+      const anchor = editorHandleRef.current?.captureSyncAnchor();
+      if (anchor) {
+        pendingViewerSyncRef.current.set(tab.id, anchor);
+      }
+      suppressViewerRevealRef.current.add(tab.id);
+      setDebouncedPreview({ tabId: tab.id, content: tab.content });
+      setViewerSyncRevision((r) => r + 1);
+    }
+    setEditorLayout(next);
+  }, []);
 
   const handleSaveTab = useCallback(
     async (tab: DocumentTab, forceOverwrite = false): Promise<boolean> => {
@@ -737,6 +772,9 @@ export default function App() {
       scrollPositionsRef.current.delete(tabId);
       editorScrollPositionsRef.current.delete(tabId);
       editorStatesRef.current.delete(tabId);
+      pendingEditorSyncRef.current.delete(tabId);
+      pendingViewerSyncRef.current.delete(tabId);
+      suppressViewerRevealRef.current.delete(tabId);
       setTabs((prevTabs) => {
         const idx = prevTabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return prevTabs;
@@ -1036,6 +1074,40 @@ export default function App() {
     []
   );
 
+  const consumePendingEditorSyncAnchor = useCallback((tabId: string) => {
+    const anchor = pendingEditorSyncRef.current.get(tabId) ?? null;
+    pendingEditorSyncRef.current.delete(tabId);
+    return anchor;
+  }, []);
+
+  const consumePendingViewerSyncAnchor = useCallback((tabId: string) => {
+    const anchor = pendingViewerSyncRef.current.get(tabId) ?? null;
+    pendingViewerSyncRef.current.delete(tabId);
+    return anchor;
+  }, []);
+
+  const handleEditorVisibleLineChange = useCallback((line: number) => {
+    const tab = activeTabRef.current;
+    const headingId = resolveActiveHeadingForLine(tocItemsRef.current, line);
+    setActiveHeadingId(headingId);
+
+    if (
+      editorLayoutRef.current === 'split' &&
+      tab &&
+      !pendingViewerSyncRef.current.has(tab.id)
+    ) {
+      const container = scrollContainerRef.current;
+      const article = articleRef.current;
+      if (container && article) {
+        applyAnchorToViewer(container, article, {
+          line,
+          lineFraction: 0,
+          viewportOffset: 96,
+        });
+      }
+    }
+  }, []);
+
   const handleEditorSearch = useCallback(
     (query: string, caseSensitive: boolean, direction?: 'next' | 'prev') => {
       return (
@@ -1312,9 +1384,7 @@ export default function App() {
             updateSettings({ sidebarOpen: !settings.sidebarOpen })
           }
           onChangeMode={handleChangeMode}
-          onToggleSplitLayout={() =>
-            setEditorLayout((prev) => (prev === 'split' ? 'editor' : 'split'))
-          }
+          onToggleSplitLayout={handleToggleSplitLayout}
           onSaveFile={handleSaveActiveFile}
           onSaveFileAs={handleSaveActiveFileAs}
           onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
@@ -1391,6 +1461,8 @@ export default function App() {
                     onSaveFile={handleSaveActiveFile}
                     onSaveScrollTop={handleSaveEditorScrollTop}
                     getSavedEditorScrollTop={getSavedEditorScrollTop}
+                    consumePendingSyncAnchor={consumePendingEditorSyncAnchor}
+                    onVisibleLineChange={handleEditorVisibleLineChange}
                   />
                 </div>
               )}
@@ -1419,6 +1491,11 @@ export default function App() {
                     onSaveScrollTop={handleSaveScrollTop}
                     onActiveHeadingChange={setActiveHeadingId}
                     onConsumePendingAnchor={handleConsumePendingAnchor}
+                    consumePendingSyncAnchor={consumePendingViewerSyncAnchor}
+                    suppressRevealAnimation={suppressViewerRevealRef.current.has(
+                      activeTab.id
+                    )}
+                    syncRevision={viewerSyncRevision}
                     onOpenRelativeLink={handleOpenRelativeLink}
                     onOpenExternalError={handleOpenExternalError}
                     onImageClick={handleImageClick}

@@ -4,6 +4,8 @@ import { cn } from '../utils/format';
 
 interface CodeBlockProps {
   children?: React.ReactNode;
+  dataSourceLine?: string | number;
+  dataSourceLineEnd?: string | number;
 }
 
 function extractTextContent(node: React.ReactNode): string {
@@ -60,7 +62,11 @@ const LANGUAGE_LABELS: Record<string, string> = {
   diff: 'Diff',
 };
 
-export function CodeBlock({ children }: CodeBlockProps) {
+export function CodeBlock({
+  children,
+  dataSourceLine,
+  dataSourceLineEnd,
+}: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
 
   const rawLanguage = extractLanguage(children);
@@ -90,7 +96,11 @@ export function CodeBlock({ children }: CodeBlockProps) {
   };
 
   return (
-    <div className="folix-code-container group my-5 overflow-hidden rounded-xl border border-folix-border bg-[var(--folix-code-bg)] shadow-folix-sm">
+    <div
+      className="folix-code-container group my-5 overflow-hidden rounded-xl border border-folix-border bg-[var(--folix-code-bg)] shadow-folix-sm"
+      data-source-line={dataSourceLine}
+      data-source-line-end={dataSourceLineEnd}
+    >
       <div className="no-search-highlight flex items-center justify-between border-b border-folix-border bg-[var(--folix-code-header)] px-3.5 py-2">
         <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-folix-text-secondary uppercase">
           <Terminal size={13} className="text-folix-accent opacity-80" />

@@ -3,6 +3,7 @@ import React, {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -25,13 +26,23 @@ import {
   Lightbulb,
   ShieldAlert,
 } from 'lucide-react';
-import type { DocumentTab, ReaderSettings, TocItem } from '../types/folix';
+import type {
+  DocumentTab,
+  ReaderSettings,
+  TocItem,
+  ViewportSyncAnchor,
+} from '../types/folix';
 import {
   cn,
   computeReadingStats,
   formatBytes,
   formatFullDate,
 } from '../utils/format';
+import {
+  applyAnchorToViewer,
+  extractSourceLineProps,
+  rehypeSourceLines,
+} from '../utils/scrollSync';
 import { CodeBlock } from './CodeBlock';
 
 interface MarkdownViewerProps {
@@ -46,6 +57,9 @@ interface MarkdownViewerProps {
   onSaveScrollTop: (tabId: string, scrollTop: number) => void;
   onActiveHeadingChange: (id: string | null) => void;
   onConsumePendingAnchor: (tabId: string) => void;
+  consumePendingSyncAnchor?: (tabId: string) => ViewportSyncAnchor | null;
+  suppressRevealAnimation?: boolean;
+  syncRevision?: number;
   onOpenRelativeLink: (relPath: string) => void;
   onOpenExternalError: (message: string) => void;
   onImageClick: (src: string, alt?: string) => void;
@@ -174,6 +188,8 @@ interface MarkdownImageProps {
   alt?: string;
   title?: string;
   directory: string;
+  dataSourceLine?: number | string;
+  dataSourceLineEnd?: number | string;
   onImageClick: (src: string, alt?: string) => void;
 }
 
@@ -182,6 +198,8 @@ function MarkdownImage({
   alt,
   title,
   directory,
+  dataSourceLine,
+  dataSourceLineEnd,
   onImageClick,
 }: MarkdownImageProps) {
   const [hasError, setHasError] = useState(false);
@@ -208,7 +226,11 @@ function MarkdownImage({
 
   if (!resolvedSrc || hasError) {
     return (
-      <span className="my-4 flex items-center gap-3 rounded-xl border border-dashed border-folix-border bg-folix-bg/70 px-4 py-3 text-[13px] text-folix-text-secondary">
+      <span
+        data-source-line={dataSourceLine}
+        data-source-line-end={dataSourceLineEnd}
+        className="my-4 flex items-center gap-3 rounded-xl border border-dashed border-folix-border bg-folix-bg/70 px-4 py-3 text-[13px] text-folix-text-secondary"
+      >
         <ImageOff size={18} className="shrink-0 text-folix-text-muted" />
         <span className="min-w-0">
           <span className="block font-medium text-folix-text">
@@ -228,6 +250,8 @@ function MarkdownImage({
       src={resolvedSrc}
       alt={alt || ''}
       title={title}
+      data-source-line={dataSourceLine}
+      data-source-line-end={dataSourceLineEnd}
       loading="lazy"
       onError={() => setHasError(true)}
       onClick={() => onImageClick(resolvedSrc, alt)}
@@ -273,13 +297,36 @@ const MemoizedMarkdownContent = memo(
 
     const components: Components = useMemo(
       () => ({
-        pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-        table: ({ children }) => (
-          <div className="folix-table-wrap">
-            <table>{children}</table>
-          </div>
-        ),
-        blockquote: ({ children }) => {
+        pre: ({ node, children, ...props }) => {
+          const sourceProps = extractSourceLineProps(
+            node,
+            props as Record<string, unknown>
+          );
+          return (
+            <CodeBlock
+              dataSourceLine={sourceProps['data-source-line']}
+              dataSourceLineEnd={sourceProps['data-source-line-end']}
+            >
+              {children}
+            </CodeBlock>
+          );
+        },
+        table: ({ node, children, ...props }) => {
+          const sourceProps = extractSourceLineProps(
+            node,
+            props as Record<string, unknown>
+          );
+          return (
+            <div className="folix-table-wrap" {...sourceProps}>
+              <table>{children}</table>
+            </div>
+          );
+        },
+        blockquote: ({ node, children, ...props }) => {
+          const sourceProps = extractSourceLineProps(
+            node,
+            props as Record<string, unknown>
+          );
           const alert = parseGitHubAlert(children);
           if (alert && CALLOUT_CONFIG[alert.type]) {
             const cfg = CALLOUT_CONFIG[alert.type];
@@ -290,6 +337,7 @@ const MemoizedMarkdownContent = memo(
                   'folix-callout my-5 rounded-xl border px-4 py-3.5',
                   cfg.containerClass
                 )}
+                {...sourceProps}
               >
                 <div
                   className={cn(
@@ -306,17 +354,25 @@ const MemoizedMarkdownContent = memo(
               </div>
             );
           }
-          return <blockquote>{children}</blockquote>;
+          return <blockquote {...sourceProps}>{children}</blockquote>;
         },
-        img: ({ src, alt, title }) => (
-          <MarkdownImage
-            src={src}
-            alt={alt}
-            title={title}
-            directory={directory}
-            onImageClick={handleImageClick}
-          />
-        ),
+        img: ({ node, src, alt, title, ...props }) => {
+          const sourceProps = extractSourceLineProps(
+            node,
+            props as Record<string, unknown>
+          );
+          return (
+            <MarkdownImage
+              src={src}
+              alt={alt}
+              title={title}
+              directory={directory}
+              dataSourceLine={sourceProps['data-source-line']}
+              dataSourceLineEnd={sourceProps['data-source-line-end']}
+              onImageClick={handleImageClick}
+            />
+          );
+        },
         a: ({ href, children }) => {
           if (!href) {
             return <span>{children}</span>;
@@ -378,6 +434,7 @@ const MemoizedMarkdownContent = memo(
           rehypeRaw,
           [rehypeSanitize, folixSanitizeSchema],
           rehypeSlug,
+          rehypeSourceLines,
           [rehypeHighlight, { detect: true, ignoreMissing: true }],
         ]}
         components={components}
@@ -414,6 +471,9 @@ export const MarkdownViewer = memo(function MarkdownViewer({
   onSaveScrollTop,
   onActiveHeadingChange,
   onConsumePendingAnchor,
+  consumePendingSyncAnchor,
+  suppressRevealAnimation,
+  syncRevision = 0,
   onOpenRelativeLink,
   onOpenExternalError,
   onImageClick,
@@ -445,30 +505,6 @@ export const MarkdownViewer = memo(function MarkdownViewer({
     },
     [scrollContainerRef, articleRef, onActiveHeadingChange]
   );
-
-  // Restore scroll position or jump to pending anchor on tab switch
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    if (documentTab.pendingAnchor) {
-      const anchor = documentTab.pendingAnchor;
-      const timer = window.setTimeout(() => {
-        scrollToHeading(anchor);
-        onConsumePendingAnchor(documentTab.id);
-      }, 60);
-      return () => window.clearTimeout(timer);
-    }
-
-    container.scrollTop = getSavedScrollTop(documentTab.id);
-  }, [
-    documentTab.id,
-    documentTab.pendingAnchor,
-    scrollContainerRef,
-    getSavedScrollTop,
-    scrollToHeading,
-    onConsumePendingAnchor,
-  ]);
 
   // Update active TOC heading on scroll (scroll-spy)
   const updateActiveHeading = useCallback(() => {
@@ -511,6 +547,105 @@ export const MarkdownViewer = memo(function MarkdownViewer({
     onSaveScrollTop,
   ]);
 
+  const getSavedScrollTopRef = useRef(getSavedScrollTop);
+  getSavedScrollTopRef.current = getSavedScrollTop;
+  const onSaveScrollTopRef = useRef(onSaveScrollTop);
+  onSaveScrollTopRef.current = onSaveScrollTop;
+  const consumePendingSyncAnchorRef = useRef(consumePendingSyncAnchor);
+  consumePendingSyncAnchorRef.current = consumePendingSyncAnchor;
+  const updateActiveHeadingRef = useRef(updateActiveHeading);
+  updateActiveHeadingRef.current = updateActiveHeading;
+  const scrollToHeadingRef = useRef(scrollToHeading);
+  scrollToHeadingRef.current = scrollToHeading;
+  const onConsumePendingAnchorRef = useRef(onConsumePendingAnchor);
+  onConsumePendingAnchorRef.current = onConsumePendingAnchor;
+
+  // Restore scroll position, apply structural sync anchor before paint, or jump to pending anchor
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (documentTab.pendingAnchor) {
+      const anchor = documentTab.pendingAnchor;
+      const timer = window.setTimeout(() => {
+        scrollToHeadingRef.current(anchor);
+        onConsumePendingAnchorRef.current(documentTab.id);
+      }, 60);
+      return () => window.clearTimeout(timer);
+    }
+
+    const pendingSync = consumePendingSyncAnchorRef.current?.(documentTab.id);
+    if (pendingSync) {
+      const article = articleRef.current;
+      applyAnchorToViewer(container, article, pendingSync);
+      onSaveScrollTopRef.current(documentTab.id, container.scrollTop);
+      updateActiveHeadingRef.current();
+
+      if (!pendingSync.atTop && article) {
+        const pendingImgs = Array.from(article.querySelectorAll('img')).filter(
+          (img) => !img.complete
+        );
+        if (pendingImgs.length > 0) {
+          let cancelled = false;
+          const cleanupListeners: Array<() => void> = [];
+
+          const stopTracking = () => {
+            if (cancelled) return;
+            cancelled = true;
+            for (const fn of cleanupListeners) fn();
+          };
+
+          const onUserScrollIntent = () => stopTracking();
+          container.addEventListener('wheel', onUserScrollIntent, {
+            passive: true,
+          });
+          container.addEventListener('touchstart', onUserScrollIntent, {
+            passive: true,
+          });
+          container.addEventListener('pointerdown', onUserScrollIntent, {
+            passive: true,
+          });
+          cleanupListeners.push(() => {
+            container.removeEventListener('wheel', onUserScrollIntent);
+            container.removeEventListener('touchstart', onUserScrollIntent);
+            container.removeEventListener('pointerdown', onUserScrollIntent);
+          });
+
+          const onMediaResolved = () => {
+            if (cancelled) return;
+            applyAnchorToViewer(container, article, pendingSync);
+            onSaveScrollTopRef.current(documentTab.id, container.scrollTop);
+            updateActiveHeadingRef.current();
+          };
+
+          for (const img of pendingImgs) {
+            img.addEventListener('load', onMediaResolved, { once: true });
+            img.addEventListener('error', onMediaResolved, { once: true });
+            cleanupListeners.push(() => {
+              img.removeEventListener('load', onMediaResolved);
+              img.removeEventListener('error', onMediaResolved);
+            });
+          }
+
+          const expireTimer = window.setTimeout(stopTracking, 250);
+          cleanupListeners.push(() => window.clearTimeout(expireTimer));
+
+          return () => stopTracking();
+        }
+      }
+      return;
+    }
+
+    container.scrollTop = getSavedScrollTopRef.current(documentTab.id);
+  }, [
+    documentTab.id,
+    documentTab.pendingAnchor,
+    documentTab.mode,
+    syncRevision,
+    scrollContainerRef,
+    articleRef,
+  ]);
+
   useEffect(() => {
     const timer = window.setTimeout(updateActiveHeading, 80);
     return () => window.clearTimeout(timer);
@@ -527,7 +662,8 @@ export const MarkdownViewer = memo(function MarkdownViewer({
       <div
         key={`${documentTab.id}:${documentTab.updatedAt}`}
         className={cn(
-          'folix-print-sheet folix-doc-reveal mx-auto w-full rounded-2xl border border-folix-border bg-folix-surface px-7 py-9 shadow-folix-doc transition-[max-width] duration-200 sm:px-12 sm:py-12',
+          'folix-print-sheet mx-auto w-full rounded-2xl border border-folix-border bg-folix-surface px-7 py-9 shadow-folix-doc transition-[max-width] duration-200 sm:px-12 sm:py-12',
+          !suppressRevealAnimation && 'folix-doc-reveal',
           PAGE_WIDTH_CLASSES[pageWidth]
         )}
       >

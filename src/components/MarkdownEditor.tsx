@@ -2,8 +2,8 @@ import {
   forwardRef,
   memo,
   useCallback,
-  useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -28,7 +28,7 @@ import {
   SearchQuery,
   setSearchQuery,
 } from '@codemirror/search';
-import { EditorState, Prec, type Extension } from '@codemirror/state';
+import { Annotation, EditorState, Prec, type Extension } from '@codemirror/state';
 import {
   drawSelection,
   EditorView,
@@ -61,7 +61,11 @@ import {
   Table,
   Undo2,
 } from 'lucide-react';
-import type { DocumentTab, ReaderSettings } from '../types/folix';
+import type {
+  DocumentTab,
+  ReaderSettings,
+  ViewportSyncAnchor,
+} from '../types/folix';
 import {
   cn,
   computeReadingStats,
@@ -82,6 +86,11 @@ import {
 
 export interface MarkdownEditorHandle {
   scrollToLine: (lineNumber: number) => void;
+  scrollToAnchor: (
+    anchor: ViewportSyncAnchor,
+    options?: { updateSelection?: boolean }
+  ) => void;
+  captureSyncAnchor: () => ViewportSyncAnchor | null;
   findAndHighlight: (
     query: string,
     caseSensitive: boolean,
@@ -103,6 +112,8 @@ interface MarkdownEditorProps {
   onSaveFile: () => void;
   onSaveScrollTop: (tabId: string, scrollTop: number) => void;
   getSavedEditorScrollTop: (tabId: string) => number;
+  consumePendingSyncAnchor?: (tabId: string) => ViewportSyncAnchor | null;
+  onVisibleLineChange?: (line: number) => void;
 }
 
 const PAGE_WIDTH_CLASSES: Record<ReaderSettings['pageWidth'], string> = {
@@ -219,6 +230,191 @@ const folixEditorTheme = EditorView.theme({
   },
 });
 
+const programmaticSyncAnnotation = Annotation.define<boolean>();
+
+function applyAnchorToEditor(
+  view: EditorView,
+  container: HTMLElement,
+  anchor: ViewportSyncAnchor,
+  options?: { updateSelection?: boolean; forceSelection?: boolean }
+): void {
+  const doc = view.state.doc;
+  const updateSelection = options?.updateSelection ?? true;
+  const forceSelection = options?.forceSelection ?? false;
+
+  if (anchor.atTop) {
+    if (updateSelection) {
+      const currentLine = doc.lineAt(view.state.selection.main.head).number;
+      if (forceSelection || currentLine > 15) {
+        view.dispatch({
+          selection: { anchor: 0 },
+          annotations: programmaticSyncAnnotation.of(true),
+        });
+      }
+    }
+    container.scrollTop = 0;
+    return;
+  }
+
+  const targetLineNum = Math.max(1, Math.min(anchor.line, doc.lines));
+  const lineInfo = doc.line(targetLineNum);
+  const clampedFraction = Math.max(0, Math.min(0.99, anchor.lineFraction));
+  const charOffset =
+    lineInfo.length > 0 && clampedFraction > 0
+      ? Math.min(lineInfo.length, Math.round(lineInfo.length * clampedFraction))
+      : 0;
+  const targetPos = lineInfo.from + charOffset;
+
+  const containerHeight =
+    container.clientHeight || container.getBoundingClientRect().height;
+  const desiredOffset = Math.max(
+    8,
+    Math.min(Math.max(24, containerHeight - 48), anchor.viewportOffset)
+  );
+
+  let selectionChange: { anchor: number } | undefined;
+  if (updateSelection) {
+    const currentLine = doc.lineAt(view.state.selection.main.head).number;
+    if (forceSelection || Math.abs(currentLine - targetLineNum) > 15) {
+      selectionChange = { anchor: lineInfo.from };
+    }
+  }
+
+  view.dispatch({
+    ...(selectionChange ? { selection: selectionChange } : {}),
+    effects: EditorView.scrollIntoView(targetPos, {
+      y: 'start',
+      yMargin: desiredOffset,
+    }),
+    annotations: programmaticSyncAnnotation.of(true),
+  });
+
+  // Convergent multi-pass alignment: forces CodeMirror to measure newly exposed
+  // viewport lines and eliminates drift from .cm-gap height estimates.
+  for (let pass = 0; pass < 5; pass++) {
+    const containerRect = container.getBoundingClientRect();
+    const coords = view.coordsAtPos(targetPos);
+
+    let currentRelativeTop: number | null = coords
+      ? coords.top - containerRect.top
+      : null;
+
+    if (currentRelativeTop === null) {
+      const block = view.lineBlockAt(targetPos);
+      currentRelativeTop = view.documentTop + block.top - containerRect.top;
+    }
+
+    const delta = currentRelativeTop - desiredOffset;
+    if (Math.abs(delta) <= 1) {
+      break;
+    }
+
+    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    const nextScrollTop = Math.max(
+      0,
+      Math.min(maxScroll, container.scrollTop + delta)
+    );
+    if (Math.abs(nextScrollTop - container.scrollTop) < 0.5) {
+      break;
+    }
+
+    container.scrollTop = nextScrollTop;
+    view.requestMeasure();
+  }
+}
+
+function captureSyncAnchorFromEditor(
+  view: EditorView | null,
+  container: HTMLElement | null,
+  hasUserInteracted: boolean
+): ViewportSyncAnchor | null {
+  if (!view || !container) return null;
+
+  const containerRect = container.getBoundingClientRect();
+  const containerTop = containerRect.top;
+  const containerBottom = containerRect.bottom;
+  const containerHeight = containerRect.height || container.clientHeight;
+  const doc = view.state.doc;
+
+  if (hasUserInteracted) {
+    const headPos = view.state.selection.main.head;
+    const cursorCoords = view.coordsAtPos(headPos);
+    if (
+      cursorCoords &&
+      cursorCoords.top >= containerTop + 8 &&
+      cursorCoords.bottom <= containerBottom - 8
+    ) {
+      const lineInfo = doc.lineAt(headPos);
+      const block = view.lineBlockAt(headPos);
+      const blockScreenTop = view.documentTop + block.top;
+      const singleLineHeight = Math.max(
+        view.defaultLineHeight,
+        cursorCoords.bottom - cursorCoords.top
+      );
+      let lineFraction = 0;
+
+      if (block.height > singleLineHeight * 1.6) {
+        lineFraction = Math.max(
+          0,
+          Math.min(
+            0.99,
+            (cursorCoords.top - blockScreenTop) / Math.max(1, block.height)
+          )
+        );
+      }
+
+      return {
+        line: lineInfo.number,
+        lineFraction,
+        viewportOffset: Math.round(cursorCoords.top - containerTop),
+      };
+    }
+  }
+
+  if (container.scrollTop <= 4) {
+    return { line: 1, lineFraction: 0, viewportOffset: 0, atTop: true };
+  }
+
+  const docTopScreen = view.documentTop;
+  const pivotScreenY =
+    containerTop + Math.min(72, Math.max(36, containerHeight * 0.14));
+
+  if (pivotScreenY < docTopScreen) {
+    return {
+      line: 1,
+      lineFraction: 0,
+      viewportOffset: Math.max(0, Math.round(docTopScreen - containerTop)),
+    };
+  }
+
+  const heightInDoc = Math.max(0, pivotScreenY - docTopScreen);
+  const block = view.lineBlockAtHeight(heightInDoc);
+  const lineInfo = doc.lineAt(block.from);
+  const blockTopScreen = docTopScreen + block.top;
+
+  if (
+    blockTopScreen >= containerTop + 8 &&
+    blockTopScreen <= pivotScreenY + 24
+  ) {
+    return {
+      line: lineInfo.number,
+      lineFraction: 0,
+      viewportOffset: Math.round(blockTopScreen - containerTop),
+    };
+  }
+
+  const lineFraction = Math.max(
+    0,
+    Math.min(0.99, (heightInDoc - block.top) / Math.max(1, block.height))
+  );
+
+  return {
+    line: lineInfo.number,
+    lineFraction,
+    viewportOffset: Math.round(pivotScreenY - containerTop),
+  };
+}
+
 const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
   function MarkdownEditorInner(
     {
@@ -233,6 +429,8 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
       onSaveFile,
       onSaveScrollTop,
       getSavedEditorScrollTop,
+      consumePendingSyncAnchor,
+      onVisibleLineChange,
     },
     ref
   ) {
@@ -241,6 +439,11 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
     const viewRef = useRef<EditorView | null>(null);
     const activeTabIdRef = useRef(documentTab.id);
     const lastSyncedDocRef = useRef(documentTab.content);
+    const hasUserInteractedRef = useRef(false);
+    const syncVerifyRafRef = useRef<number | null>(null);
+    const visibleLineRafRef = useRef<number | null>(null);
+    const suppressNextScrollSyncRef = useRef(false);
+    const programmaticScrollTargetRef = useRef(0);
 
     const onChangeRef = useRef(onChangeContent);
     onChangeRef.current = onChangeContent;
@@ -248,6 +451,10 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
     onSaveScrollTopRef.current = onSaveScrollTop;
     const getSavedScrollTopRef = useRef(getSavedEditorScrollTop);
     getSavedScrollTopRef.current = getSavedEditorScrollTop;
+    const consumePendingSyncAnchorRef = useRef(consumePendingSyncAnchor);
+    consumePendingSyncAnchorRef.current = consumePendingSyncAnchor;
+    const onVisibleLineChangeRef = useRef(onVisibleLineChange);
+    onVisibleLineChangeRef.current = onVisibleLineChange;
     const editorStatesMapRef = useRef(editorStatesMap);
     editorStatesMapRef.current = editorStatesMap;
 
@@ -315,9 +522,17 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
 
       const updateListener = EditorView.updateListener.of((update) => {
         if (update.docChanged) {
+          hasUserInteractedRef.current = true;
           const nextDoc = update.state.doc.toString();
           lastSyncedDocRef.current = nextDoc;
           onChangeRef.current(activeTabIdRef.current, nextDoc);
+        } else if (
+          update.selectionSet &&
+          !update.transactions.some((tr) =>
+            tr.annotation(programmaticSyncAnnotation)
+          )
+        ) {
+          hasUserInteractedRef.current = true;
         }
         if (update.docChanged || update.transactions.length > 0) {
           editorStatesMapRef.current.set(activeTabIdRef.current, update.state);
@@ -362,8 +577,34 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
       [buildExtensions]
     );
 
-    // Mount EditorView once and clean up on unmount
-    useEffect(() => {
+    const scheduleSyncVerification = useCallback(
+      (tabId: string, anchor: ViewportSyncAnchor) => {
+        if (syncVerifyRafRef.current !== null) {
+          window.cancelAnimationFrame(syncVerifyRafRef.current);
+        }
+        syncVerifyRafRef.current = window.requestAnimationFrame(() => {
+          syncVerifyRafRef.current = null;
+          const activeView = viewRef.current;
+          const activeContainer = scrollContainerRef.current;
+          if (!activeView || !activeContainer || activeTabIdRef.current !== tabId) {
+            return;
+          }
+          const prevScrollTop = activeContainer.scrollTop;
+          applyAnchorToEditor(activeView, activeContainer, anchor, {
+            updateSelection: false,
+          });
+          if (Math.abs(activeContainer.scrollTop - prevScrollTop) > 0.5) {
+            programmaticScrollTargetRef.current = activeContainer.scrollTop;
+            suppressNextScrollSyncRef.current = true;
+          }
+          onSaveScrollTopRef.current(tabId, activeContainer.scrollTop);
+        });
+      },
+      []
+    );
+
+    // Mount EditorView once before paint and clean up on unmount
+    useLayoutEffect(() => {
       const host = editorHostRef.current;
       if (!host) return;
 
@@ -376,14 +617,40 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
       viewRef.current = view;
       activeTabIdRef.current = documentTab.id;
       lastSyncedDocRef.current = documentTab.content;
+      hasUserInteractedRef.current = false;
       syncUndoRedoFlags(initialState);
 
       const container = scrollContainerRef.current;
       if (container) {
-        container.scrollTop = getSavedScrollTopRef.current(documentTab.id);
+        const pendingSync = consumePendingSyncAnchorRef.current?.(documentTab.id);
+        if (pendingSync) {
+          applyAnchorToEditor(view, container, pendingSync, {
+            updateSelection: true,
+          });
+          programmaticScrollTargetRef.current = container.scrollTop;
+          suppressNextScrollSyncRef.current = true;
+          onSaveScrollTopRef.current(documentTab.id, container.scrollTop);
+          onVisibleLineChangeRef.current?.(
+            Math.max(1, Math.min(pendingSync.line, view.state.doc.lines))
+          );
+          scheduleSyncVerification(documentTab.id, pendingSync);
+        } else {
+          const savedTop = getSavedScrollTopRef.current(documentTab.id);
+          programmaticScrollTargetRef.current = savedTop;
+          suppressNextScrollSyncRef.current = savedTop > 0;
+          container.scrollTop = savedTop;
+        }
       }
 
       return () => {
+        if (syncVerifyRafRef.current !== null) {
+          window.cancelAnimationFrame(syncVerifyRafRef.current);
+          syncVerifyRafRef.current = null;
+        }
+        if (visibleLineRafRef.current !== null) {
+          window.cancelAnimationFrame(visibleLineRafRef.current);
+          visibleLineRafRef.current = null;
+        }
         if (viewRef.current) {
           editorStatesMapRef.current.set(
             activeTabIdRef.current,
@@ -403,7 +670,7 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
     }, []);
 
     // Switch EditorState cleanly when changing tabs or reloading file externally
-    useEffect(() => {
+    useLayoutEffect(() => {
       const view = viewRef.current;
       if (!view) return;
 
@@ -417,15 +684,32 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
 
         activeTabIdRef.current = documentTab.id;
         lastSyncedDocRef.current = documentTab.content;
+        hasUserInteractedRef.current = false;
 
         const nextState = getOrCreateEditorState(documentTab);
         view.setState(nextState);
         syncUndoRedoFlags(nextState);
 
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = getSavedScrollTopRef.current(
-            documentTab.id
-          );
+        const container = scrollContainerRef.current;
+        if (container) {
+          const pendingSync = consumePendingSyncAnchorRef.current?.(documentTab.id);
+          if (pendingSync) {
+            applyAnchorToEditor(view, container, pendingSync, {
+              updateSelection: true,
+            });
+            programmaticScrollTargetRef.current = container.scrollTop;
+            suppressNextScrollSyncRef.current = true;
+            onSaveScrollTopRef.current(documentTab.id, container.scrollTop);
+            onVisibleLineChangeRef.current?.(
+              Math.max(1, Math.min(pendingSync.line, view.state.doc.lines))
+            );
+            scheduleSyncVerification(documentTab.id, pendingSync);
+          } else {
+            const savedTop = getSavedScrollTopRef.current(documentTab.id);
+            programmaticScrollTargetRef.current = savedTop;
+            suppressNextScrollSyncRef.current = savedTop > 0;
+            container.scrollTop = savedTop;
+          }
         }
         return;
       }
@@ -433,6 +717,7 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
       // Same tab: sync only when content was modified externally (e.g. reload/discard)
       if (documentTab.content !== lastSyncedDocRef.current) {
         lastSyncedDocRef.current = documentTab.content;
+        hasUserInteractedRef.current = false;
         const currentDoc = view.state.doc.toString();
         if (currentDoc !== documentTab.content) {
           const freshState = EditorState.create({
@@ -448,6 +733,7 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
       documentTab,
       buildExtensions,
       getOrCreateEditorState,
+      scheduleSyncVerification,
       syncUndoRedoFlags,
     ]);
 
@@ -463,20 +749,41 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
             1,
             Math.min(lineNumber, view.state.doc.lines)
           );
-          const lineInfo = view.state.doc.line(clamped);
-          view.dispatch({
-            selection: { anchor: lineInfo.from },
-          });
+          applyAnchorToEditor(
+            view,
+            container,
+            { line: clamped, lineFraction: 0, viewportOffset: 36 },
+            { updateSelection: true, forceSelection: true }
+          );
+          programmaticScrollTargetRef.current = container.scrollTop;
+          suppressNextScrollSyncRef.current = true;
+          onSaveScrollTopRef.current(activeTabIdRef.current, container.scrollTop);
+          onVisibleLineChangeRef.current?.(clamped);
+        },
+        scrollToAnchor(
+          anchor: ViewportSyncAnchor,
+          options?: { updateSelection?: boolean }
+        ) {
+          const view = viewRef.current;
+          const container = scrollContainerRef.current;
+          if (!view || !container) return;
 
-          const coords = view.coordsAtPos(lineInfo.from);
-          if (coords) {
-            const containerRect = container.getBoundingClientRect();
-            const relativeTop = coords.top - containerRect.top;
-            container.scrollTo({
-              top: Math.max(0, container.scrollTop + relativeTop - 72),
-              behavior: 'smooth',
-            });
-          }
+          applyAnchorToEditor(view, container, anchor, {
+            updateSelection: options?.updateSelection ?? true,
+          });
+          programmaticScrollTargetRef.current = container.scrollTop;
+          suppressNextScrollSyncRef.current = true;
+          onSaveScrollTopRef.current(activeTabIdRef.current, container.scrollTop);
+          onVisibleLineChangeRef.current?.(
+            Math.max(1, Math.min(anchor.line, view.state.doc.lines))
+          );
+        },
+        captureSyncAnchor() {
+          return captureSyncAnchorFromEditor(
+            viewRef.current,
+            scrollContainerRef.current,
+            hasUserInteractedRef.current
+          );
         },
         findAndHighlight(
           query: string,
@@ -594,13 +901,38 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
     const isDirty = documentTab.content !== documentTab.savedContent;
 
     const handleScroll = useCallback(() => {
-      if (scrollContainerRef.current) {
-        onSaveScrollTopRef.current(
-          documentTab.id,
-          scrollContainerRef.current.scrollTop
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      onSaveScrollTopRef.current(activeTabIdRef.current, container.scrollTop);
+
+      if (suppressNextScrollSyncRef.current) {
+        const diff = Math.abs(
+          container.scrollTop - programmaticScrollTargetRef.current
         );
+        suppressNextScrollSyncRef.current = false;
+        if (diff <= 2) {
+          return;
+        }
       }
-    }, [documentTab.id]);
+
+      if (!onVisibleLineChangeRef.current) return;
+      if (visibleLineRafRef.current !== null) return;
+
+      visibleLineRafRef.current = window.requestAnimationFrame(() => {
+        visibleLineRafRef.current = null;
+        const view = viewRef.current;
+        const scroller = scrollContainerRef.current;
+        if (!view || !scroller || !onVisibleLineChangeRef.current) return;
+
+        const containerTop = scroller.getBoundingClientRect().top;
+        const probeY = containerTop + 96;
+        const heightInDoc = Math.max(0, probeY - view.documentTop);
+        const block = view.lineBlockAtHeight(heightInDoc);
+        const lineNum = view.state.doc.lineAt(block.from).number;
+        onVisibleLineChangeRef.current(lineNum);
+      });
+    }, []);
 
     return (
       <div className="no-print flex min-h-0 flex-1 flex-col overflow-hidden">

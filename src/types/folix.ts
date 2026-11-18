@@ -7,6 +7,14 @@ export type LineEnding = '\r\n' | '\n';
 export type DocumentMode = 'read' | 'edit';
 export type EditorLayout = 'editor' | 'split';
 
+export interface ViewportSyncAnchor {
+  line: number;
+  lineFraction: number;
+  viewportOffset: number;
+  atTop?: boolean;
+  atBottom?: boolean;
+}
+
 export interface ReaderSettings {
   theme: ThemeMode;
   fontFamily: FontFamilyPreference;
