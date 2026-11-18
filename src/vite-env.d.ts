@@ -1,14 +1,30 @@
 /// <reference types="vite/client" />
-import type { FileReadResponse, RelativeFileReadResponse } from './types/folix';
+import type {
+  FileEncoding,
+  FileReadResponse,
+  FileSaveRequest,
+  FileSaveResponse,
+  LineEnding,
+  RelativeFileReadResponse,
+} from './types/folix';
 
 export interface FolixAPI {
   minimizeWindow: () => Promise<void>;
   toggleMaximizeWindow: () => Promise<boolean>;
   closeWindow: () => Promise<void>;
+  confirmCloseWindow: () => Promise<void>;
   isWindowMaximized: () => Promise<boolean>;
   onMaximizedChange: (callback: (isMaximized: boolean) => void) => () => void;
+  onRequestCloseWindow: (callback: () => void) => () => void;
   openFilesDialog: () => Promise<FileReadResponse[]>;
   readFile: (filePath: string) => Promise<FileReadResponse>;
+  saveFile: (req: FileSaveRequest) => Promise<FileSaveResponse>;
+  saveFileAs: (req: {
+    defaultPath?: string;
+    content: string;
+    encoding?: FileEncoding;
+    lineEnding?: LineEnding;
+  }) => Promise<FileSaveResponse>;
   openRelativeFile: (
     baseDir: string,
     relPath: string

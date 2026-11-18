@@ -1,6 +1,20 @@
 import type { ResolvedTheme } from '../types/folix';
 import { cn } from '../utils/format';
 
+const FOLIX_BRAND_ASSETS = [
+  './folix-logo-light.png',
+  './folix-logo-dark.png',
+  './folix-symbol.png',
+  './folix-symbol-dark.png',
+] as const;
+
+if (typeof window !== 'undefined') {
+  for (const src of FOLIX_BRAND_ASSETS) {
+    const img = new Image();
+    img.src = src;
+  }
+}
+
 interface FolixLogoProps {
   variant?: 'symbol' | 'full';
   resolvedTheme?: ResolvedTheme;

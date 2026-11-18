@@ -1,10 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
+export type FileEncoding = 'utf8' | 'utf8-bom' | 'utf16le';
+export type LineEnding = '\r\n' | '\n';
+
 export interface FileDataPayload {
   filePath: string;
   fileName: string;
   directory: string;
   content: string;
+  encoding?: FileEncoding;
+  lineEnding?: LineEnding;
   size: number;
   updatedAt: string;
 }
@@ -15,12 +20,33 @@ export type FileReadResponse =
 
 export type RelativeFileReadResponse = FileReadResponse & { anchor?: string };
 
+export interface FileSaveRequest {
+  filePath: string;
+  content: string;
+  encoding?: FileEncoding;
+  lineEnding?: LineEnding;
+  expectedUpdatedAt?: string;
+  forceOverwrite?: boolean;
+}
+
+export type FileSaveResponse =
+  | { ok: true; data: FileDataPayload }
+  | {
+      ok: false;
+      error: string;
+      conflict?: boolean;
+      diskUpdatedAt?: string;
+      cancelled?: boolean;
+    };
+
 const folixAPI = {
   // Window controls
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<boolean> =>
     ipcRenderer.invoke('window:toggle-maximize'),
   closeWindow: (): Promise<void> => ipcRenderer.invoke('window:close'),
+  confirmCloseWindow: (): Promise<void> =>
+    ipcRenderer.invoke('window:confirm-close'),
   isWindowMaximized: (): Promise<boolean> =>
     ipcRenderer.invoke('window:is-maximized'),
   onMaximizedChange: (callback: (isMaximized: boolean) => void) => {
@@ -29,12 +55,25 @@ const folixAPI = {
     ipcRenderer.on('window:maximized-changed', listener);
     return () => ipcRenderer.removeListener('window:maximized-changed', listener);
   },
+  onRequestCloseWindow: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('window:request-close', listener);
+    return () => ipcRenderer.removeListener('window:request-close', listener);
+  },
 
   // File operations
   openFilesDialog: (): Promise<FileReadResponse[]> =>
     ipcRenderer.invoke('dialog:open-files'),
   readFile: (filePath: string): Promise<FileReadResponse> =>
     ipcRenderer.invoke('file:read', filePath),
+  saveFile: (req: FileSaveRequest): Promise<FileSaveResponse> =>
+    ipcRenderer.invoke('file:save', req),
+  saveFileAs: (req: {
+    defaultPath?: string;
+    content: string;
+    encoding?: FileEncoding;
+    lineEnding?: LineEnding;
+  }): Promise<FileSaveResponse> => ipcRenderer.invoke('file:save-as', req),
   openRelativeFile: (
     baseDir: string,
     relPath: string

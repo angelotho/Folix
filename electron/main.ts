@@ -48,14 +48,20 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
+let isForceClosingWindow = false;
 const openedDocumentDirs = new Set<string>();
 const pendingInitialFiles: string[] = [];
+
+type FileEncoding = 'utf8' | 'utf8-bom' | 'utf16le';
+type LineEnding = '\r\n' | '\n';
 
 interface FileDataPayload {
   filePath: string;
   fileName: string;
   directory: string;
   content: string;
+  encoding?: FileEncoding;
+  lineEnding?: LineEnding;
   size: number;
   updatedAt: string;
 }
@@ -63,6 +69,25 @@ interface FileDataPayload {
 type FileReadResponse =
   | { ok: true; data: FileDataPayload }
   | { ok: false; error: string };
+
+interface FileSaveRequest {
+  filePath: string;
+  content: string;
+  encoding?: FileEncoding;
+  lineEnding?: LineEnding;
+  expectedUpdatedAt?: string;
+  forceOverwrite?: boolean;
+}
+
+type FileSaveResponse =
+  | { ok: true; data: FileDataPayload }
+  | {
+      ok: false;
+      error: string;
+      conflict?: boolean;
+      diskUpdatedAt?: string;
+      cancelled?: boolean;
+    };
 
 function isSupportedMarkdownPath(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
@@ -158,15 +183,27 @@ async function readMarkdownFile(rawPath: string): Promise<FileReadResponse> {
     }
 
     let content: string;
+    let encoding: FileEncoding = 'utf8';
+    const hasUtf8Bom =
+      buffer.length >= 3 &&
+      buffer[0] === 0xef &&
+      buffer[1] === 0xbb &&
+      buffer[2] === 0xbf;
+
     if (hasUtf16Bom && buffer[0] === 0xff && buffer[1] === 0xfe) {
+      encoding = 'utf16le';
       content = buffer.subarray(2).toString('utf16le');
     } else {
       content = buffer.toString('utf8');
-      if (content.charCodeAt(0) === 0xfeff) {
-        content = content.slice(1);
+      if (hasUtf8Bom || content.charCodeAt(0) === 0xfeff) {
+        encoding = 'utf8-bom';
+        if (content.charCodeAt(0) === 0xfeff) {
+          content = content.slice(1);
+        }
       }
     }
 
+    const lineEnding: LineEnding = content.includes('\r\n') ? '\r\n' : '\n';
     const directory = path.dirname(normalizedPath);
     openedDocumentDirs.add(path.resolve(directory));
 
@@ -177,12 +214,155 @@ async function readMarkdownFile(rawPath: string): Promise<FileReadResponse> {
         fileName: path.basename(normalizedPath),
         directory,
         content,
+        encoding,
+        lineEnding,
         size: stat.size,
         updatedAt: stat.mtime.toISOString(),
       },
     };
   } catch (err) {
     return { ok: false, error: translateFsError(err, normalizedPath) };
+  }
+}
+
+function translateWriteError(err: unknown, filePath: string): string {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  const fileName = path.basename(filePath);
+
+  switch (code) {
+    case 'EACCES':
+    case 'EPERM':
+    case 'EROFS':
+      return `Não foi possível salvar "${fileName}". O arquivo ou a pasta é somente leitura ou não possui permissão de escrita.`;
+    case 'EBUSY':
+      return `O arquivo "${fileName}" está aberto ou bloqueado por outro programa no momento.`;
+    case 'ENOSPC':
+      return `Não há espaço suficiente em disco para salvar "${fileName}".`;
+    case 'ENOENT':
+      return `A pasta de destino de "${fileName}" não existe mais. Use "Salvar como" para escolher outro local.`;
+    default:
+      return `Não foi possível salvar "${fileName}". Verifique as permissões e tente novamente.`;
+  }
+}
+
+async function writeMarkdownFileSafe(
+  options: FileSaveRequest
+): Promise<FileSaveResponse> {
+  if (!options || typeof options.filePath !== 'string' || options.filePath.trim().length === 0) {
+    return { ok: false, error: 'Caminho de destino inválido para salvamento.' };
+  }
+
+  const normalizedPath = path.resolve(options.filePath.trim());
+  const resolvedDir = path.resolve(path.dirname(normalizedPath));
+
+  if (!isSupportedMarkdownPath(normalizedPath)) {
+    return {
+      ok: false,
+      error:
+        'Extensão não suportada para salvamento. Utilize .md, .markdown, .mdown, .mkd ou .txt.',
+    };
+  }
+
+  if (!openedDocumentDirs.has(resolvedDir)) {
+    return {
+      ok: false,
+      error: 'Diretório não autorizado para gravação direta. Utilize "Salvar como".',
+    };
+  }
+
+  const encoding: FileEncoding = options.encoding || 'utf8';
+  const lineEnding: LineEnding = options.lineEnding || '\n';
+  const rawContent = typeof options.content === 'string' ? options.content : '';
+
+  try {
+    let existingStat: fs.Stats | null = null;
+    try {
+      existingStat = await fs.promises.stat(normalizedPath);
+    } catch (statErr) {
+      if ((statErr as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        throw statErr;
+      }
+    }
+
+    if (
+      existingStat &&
+      !options.forceOverwrite &&
+      options.expectedUpdatedAt
+    ) {
+      const expectedTime = new Date(options.expectedUpdatedAt).getTime();
+      const diskTime = existingStat.mtime.getTime();
+      if (
+        !Number.isNaN(expectedTime) &&
+        Math.abs(diskTime - expectedTime) > 1500
+      ) {
+        return {
+          ok: false,
+          conflict: true,
+          diskUpdatedAt: existingStat.mtime.toISOString(),
+          error:
+            'Este arquivo foi modificado por outro programa fora do Folix desde a última leitura ou salvamento.',
+        };
+      }
+    }
+
+    const normalizedText =
+      lineEnding === '\r\n'
+        ? rawContent.replace(/\r?\n/g, '\r\n')
+        : rawContent.replace(/\r\n/g, '\n');
+
+    let buffer: Buffer;
+    if (encoding === 'utf16le') {
+      buffer = Buffer.concat([
+        Buffer.from([0xff, 0xfe]),
+        Buffer.from(normalizedText, 'utf16le'),
+      ]);
+    } else if (encoding === 'utf8-bom') {
+      buffer = Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from(normalizedText, 'utf8'),
+      ]);
+    } else {
+      buffer = Buffer.from(normalizedText, 'utf8');
+    }
+
+    const tempPath = `${normalizedPath}.folix-${process.pid}-${Date.now()}.tmp`;
+    let wroteViaRename = false;
+
+    try {
+      await fs.promises.writeFile(tempPath, buffer);
+      await fs.promises.rename(tempPath, normalizedPath);
+      wroteViaRename = true;
+    } catch (atomicErr) {
+      // Remove temporary file if still present
+      await fs.promises.unlink(tempPath).catch(() => undefined);
+
+      // On Windows, OneDrive/ACL/in-use locks can reject rename; try direct write fallback
+      if (!wroteViaRename) {
+        const errCode = (atomicErr as NodeJS.ErrnoException)?.code;
+        if (errCode === 'ENOENT' || errCode === 'ENOSPC') {
+          throw atomicErr;
+        }
+        await fs.promises.writeFile(normalizedPath, buffer);
+      }
+    }
+
+    const newStat = await fs.promises.stat(normalizedPath);
+
+    return {
+      ok: true,
+      data: {
+        filePath: normalizedPath,
+        fileName: path.basename(normalizedPath),
+        directory: path.dirname(normalizedPath),
+        content: normalizedText,
+        encoding,
+        lineEnding,
+        size: newStat.size,
+        updatedAt: newStat.mtime.toISOString(),
+      },
+    };
+  } catch (err) {
+    return { ok: false, error: translateWriteError(err, normalizedPath) };
   }
 }
 
@@ -219,15 +399,11 @@ function loadSavedThemePreference(): ThemePreference {
 }
 
 function saveThemePreference(theme: ThemePreference): void {
-  try {
-    fs.writeFileSync(
-      getThemePreferencePath(),
-      JSON.stringify({ theme }),
-      'utf8'
-    );
-  } catch {
-    // Ignore persistence write error gracefully
-  }
+  void fs.promises
+    .writeFile(getThemePreferencePath(), JSON.stringify({ theme }), 'utf8')
+    .catch(() => {
+      // Ignore persistence write error gracefully
+    });
 }
 
 function resolveWindowBackgroundColor(theme: ThemePreference): string {
@@ -235,6 +411,18 @@ function resolveWindowBackgroundColor(theme: ThemePreference): string {
     theme === 'dark' ||
     (theme === 'system' && nativeTheme.shouldUseDarkColors);
   return isDark ? '#0B0C10' : '#F4F2ED';
+}
+
+let bgColorUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleWindowBackgroundSync(theme: ThemePreference): void {
+  if (bgColorUpdateTimer !== null) {
+    clearTimeout(bgColorUpdateTimer);
+  }
+  bgColorUpdateTimer = setTimeout(() => {
+    bgColorUpdateTimer = null;
+    mainWindow?.setBackgroundColor(resolveWindowBackgroundColor(theme));
+  }, 280);
 }
 
 function createMainWindow(): BrowserWindow {
@@ -270,6 +458,12 @@ function createMainWindow(): BrowserWindow {
 
   win.on('unmaximize', () => {
     win.webContents.send('window:maximized-changed', false);
+  });
+
+  win.on('close', (event) => {
+    if (isForceClosingWindow) return;
+    event.preventDefault();
+    win.webContents.send('window:request-close');
   });
 
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -388,6 +582,11 @@ if (!gotTheLock) {
       mainWindow?.close();
     });
 
+    ipcMain.handle('window:confirm-close', () => {
+      isForceClosingWindow = true;
+      mainWindow?.close();
+    });
+
     ipcMain.handle('window:is-maximized', () => {
       return mainWindow?.isMaximized() ?? false;
     });
@@ -415,6 +614,58 @@ if (!gotTheLock) {
     ipcMain.handle('file:read', async (_event, filePath: string) => {
       return readMarkdownFile(filePath);
     });
+
+    // Safe atomic save to original file
+    ipcMain.handle('file:save', async (_event, req: FileSaveRequest) => {
+      return writeMarkdownFileSafe(req);
+    });
+
+    // Save As dialog
+    ipcMain.handle(
+      'file:save-as',
+      async (
+        _event,
+        req: {
+          defaultPath?: string;
+          content: string;
+          encoding?: FileEncoding;
+          lineEnding?: LineEnding;
+        }
+      ): Promise<FileSaveResponse> => {
+        if (!mainWindow) {
+          return { ok: false, error: 'Janela principal indisponível.' };
+        }
+
+        const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+          title: 'Salvar documento como',
+          defaultPath: req.defaultPath,
+          filters: [
+            {
+              name: 'Documentos Markdown (*.md)',
+              extensions: ['md', 'markdown', 'mdown', 'mkd'],
+            },
+            { name: 'Texto simples (*.txt)', extensions: ['txt'] },
+          ],
+        });
+
+        if (canceled || !filePath) {
+          return { ok: false, error: '', cancelled: true };
+        }
+
+        const targetPath = path.extname(filePath)
+          ? filePath
+          : `${filePath}.md`;
+        openedDocumentDirs.add(path.resolve(path.dirname(targetPath)));
+
+        return writeMarkdownFileSafe({
+          filePath: targetPath,
+          content: req.content,
+          encoding: req.encoding,
+          lineEnding: req.lineEnding,
+          forceOverwrite: true,
+        });
+      }
+    );
 
     // Open a relative markdown link inside an opened document
     ipcMain.handle(
@@ -574,14 +825,14 @@ if (!gotTheLock) {
       (_event, theme: ThemePreference) => {
         if (theme !== 'light' && theme !== 'dark' && theme !== 'system') return;
         saveThemePreference(theme);
-        mainWindow?.setBackgroundColor(resolveWindowBackgroundColor(theme));
+        scheduleWindowBackgroundSync(theme);
       }
     );
 
     nativeTheme.on('updated', () => {
       const currentPreference = loadSavedThemePreference();
       if (currentPreference === 'system') {
-        mainWindow?.setBackgroundColor(resolveWindowBackgroundColor('system'));
+        scheduleWindowBackgroundSync('system');
       }
       mainWindow?.webContents.send(
         'theme:system-changed',

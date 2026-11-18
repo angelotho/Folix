@@ -6,7 +6,8 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.0.9-4F46E5?style=flat-square)
+![Versão](https://img.shields.io/badge/versão-1.1.1-4F46E5?style=flat-square)
+[![Download v1.1.1](https://img.shields.io/badge/download-Folix--Setup--1.1.1.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.1/Folix-Setup-1.1.1.exe)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -20,6 +21,13 @@
 O **Folix** foi criado para eliminar a necessidade de utilizar IDEs, editores de código, navegadores ou serviços online apenas para ler arquivos Markdown (`.md`, `.markdown`, `.mdown`, `.mkd`).
 
 Em vez de exibir sintaxe bruta, o Folix interpreta o arquivo e entrega uma experiência de leitura editorial limpa, organizada e visualmente sofisticada — semelhante a relatórios técnicos, manuais e publicações profissionais — mantendo desempenho fluido e funcionamento **100% offline**.
+
+---
+
+## Download (Instalador Windows)
+
+- **Download direto (v1.1.1 — x64)**: [Folix-Setup-1.1.1.exe](https://github.com/angelotho/Folix/releases/download/v1.1.1/Folix-Setup-1.1.1.exe)
+- **Página da Release**: [Folix v1.1.1](https://github.com/angelotho/Folix/releases/tag/v1.1.1)
 
 ---
 
@@ -115,7 +123,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.0.9.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.1.exe`).
 
 ### Comandos
 
@@ -133,6 +141,16 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.1.1
+- Novo modo de **Edição Markdown** integrado (alternância rápida **Leitura | Edição** via barra de ferramentas ou `Ctrl + Shift + E`) baseado em CodeMirror 6, com preservação por aba do histórico de desfazer/refazer (`Ctrl + Z`, `Ctrl + Y`, `Ctrl + Shift + Z`), cursor e rolagem.
+- Barra contextual discreta de formatação (títulos, negrito, itálico, tachado, código inline, bloco de código, listas, checklists, citações, links, tabelas e separadores) com atalhos convencionais e visualização **Dividida** opcional com prévia renderizada otimizada.
+- Salvamento local seguro e atômico (`Ctrl + S`) e **Salvar como** (`Ctrl + Shift + S`) preservando codificação (`UTF-8`, `UTF-8 BOM`, `UTF-16LE`) e quebras de linha (`CRLF`/`LF`), com detecção de conflitos externos e modal de proteção contra perda de alterações não salvas.
+
+### v1.1.0
+- Otimização da transição entre os temas **Claro**, **Escuro** e **Sistema** via composição por GPU (`View Transitions API`), eliminando travamentos e recálculos pesados em documentos Markdown extensos.
+- Eliminação de re-processamento completo do Markdown e de reconstrução de componentes durante a troca de tema, preservando exatamente a posição de leitura e o estado das abas, busca e sumário lateral.
+- Suporte integral à preferência de acessibilidade de redução de movimento (`prefers-reduced-motion`) e persistência assíncrona no processo principal.
 
 ### v1.0.9
 - Exibição estritamente contextual de atalhos de teclado na tela inicial (mantendo exclusivamente `Ctrl + O` para abrir arquivos e `Ctrl + ,` para configurações).

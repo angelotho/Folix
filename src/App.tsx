@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import type { EditorState } from '@codemirror/state';
 import { Minimize2, Upload } from 'lucide-react';
 import type {
+  DocumentMode,
   DocumentTab,
+  EditorLayout,
   FileReadResponse,
   ReaderSettings,
   RecentFile,
@@ -18,15 +22,27 @@ import {
   resolveInitialTheme,
   saveReaderSettings,
 } from './utils/storage';
+import {
+  applyDomThemeAttributes,
+  runSmoothThemeTransition,
+} from './utils/themeTransition';
 import { TitleBar } from './components/TitleBar';
 import { Toolbar } from './components/Toolbar';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { SidebarToc } from './components/SidebarToc';
 import { MarkdownViewer } from './components/MarkdownViewer';
+import {
+  MarkdownEditor,
+  type MarkdownEditorHandle,
+} from './components/MarkdownEditor';
 import { SearchBar } from './components/SearchBar';
 import { ImageLightbox } from './components/ImageLightbox';
 import { DocumentLoader } from './components/DocumentLoader';
 import { SettingsModal } from './components/SettingsModal';
+import {
+  UnsavedChangesModal,
+  type PendingConfirmAction,
+} from './components/UnsavedChangesModal';
 import { SplashScreen } from './components/SplashScreen';
 import { ToastContainer } from './components/ToastContainer';
 
@@ -55,6 +71,11 @@ export default function App() {
   );
 
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+  const [editorLayout, setEditorLayout] = useState<EditorLayout>('editor');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
+  const [pendingConfirm, setPendingConfirm] =
+    useState<PendingConfirmAction | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isImmersive, setIsImmersive] = useState(false);
@@ -75,10 +96,20 @@ export default function App() {
 
   const loadingDocTimerRef = useRef<number | null>(null);
   const loadingRequestIdRef = useRef(0);
-  const hasMountedThemeRef = useRef(false);
-  const themeTransitionTimerRef = useRef<number | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const systemThemeRef = useRef(systemTheme);
+  systemThemeRef.current = systemTheme;
+  const showSplashRef = useRef(showSplash);
+  showSplashRef.current = showSplash;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const requestCloseAppRef = useRef<() => void>(() => {});
   const dragCounterRef = useRef(0);
   const scrollPositionsRef = useRef<Map<string, number>>(new Map());
+  const editorScrollPositionsRef = useRef<Map<string, number>>(new Map());
+  const editorStatesRef = useRef<Map<string, EditorState>>(new Map());
+  const editorHandleRef = useRef<MarkdownEditorHandle>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
 
@@ -89,11 +120,53 @@ export default function App() {
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [tabs, activeTabId]
   );
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  const [debouncedPreview, setDebouncedPreview] = useState<{
+    tabId: string;
+    content: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!activeTab) {
+      setDebouncedPreview(null);
+      return;
+    }
+    if ((activeTab.mode ?? 'read') === 'read') {
+      setDebouncedPreview({ tabId: activeTab.id, content: activeTab.content });
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDebouncedPreview({ tabId: activeTab.id, content: activeTab.content });
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [activeTab?.id, activeTab?.content, activeTab?.mode]);
+
+  const effectivePreviewContent = useMemo(() => {
+    if (!activeTab) return '';
+    if (isPreparingPrint) return activeTab.content;
+    if (debouncedPreview && debouncedPreview.tabId === activeTab.id) {
+      return debouncedPreview.content;
+    }
+    return activeTab.content;
+  }, [activeTab, debouncedPreview, isPreparingPrint]);
+
+  const previewTab = useMemo(() => {
+    if (!activeTab) return null;
+    if (effectivePreviewContent === activeTab.content) return activeTab;
+    return { ...activeTab, content: effectivePreviewContent };
+  }, [activeTab, effectivePreviewContent]);
 
   const tocItems = useMemo(
-    () => (activeTab ? extractTocFromMarkdown(activeTab.content) : []),
-    [activeTab]
+    () =>
+      effectivePreviewContent
+        ? extractTocFromMarkdown(effectivePreviewContent)
+        : [],
+    [activeTab?.id, effectivePreviewContent]
   );
+  const tocItemsRef = useRef(tocItems);
+  tocItemsRef.current = tocItems;
 
   const pushToast = useCallback(
     (toast: Omit<ToastMessage, 'id'>, durationMs = 4500) => {
@@ -111,31 +184,50 @@ export default function App() {
   }, []);
 
   const updateSettings = useCallback((patch: Partial<ReaderSettings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      saveReaderSettings(next);
-      return next;
-    });
+    const current = settingsRef.current;
+    const next: ReaderSettings = { ...current, ...patch };
+    const currentSys = systemThemeRef.current;
+    const prevResolved: ResolvedTheme =
+      current.theme === 'system' ? currentSys : current.theme;
+    const nextResolved: ResolvedTheme =
+      next.theme === 'system' ? currentSys : next.theme;
+
+    saveReaderSettings(next);
+    settingsRef.current = next;
+
+    if (prevResolved !== nextResolved) {
+      runSmoothThemeTransition(
+        nextResolved,
+        () => {
+          setSettings(next);
+        },
+        { skipAnimation: showSplashRef.current }
+      );
+    } else {
+      setSettings(next);
+    }
   }, []);
 
-  // Apply resolved theme attribute to root HTML element with smooth transient transition
-  useEffect(() => {
-    const root = document.documentElement;
-    if (hasMountedThemeRef.current) {
-      root.classList.add('folix-theme-transition');
-      if (themeTransitionTimerRef.current !== null) {
-        window.clearTimeout(themeTransitionTimerRef.current);
-      }
-      themeTransitionTimerRef.current = window.setTimeout(() => {
-        root.classList.remove('folix-theme-transition');
-        themeTransitionTimerRef.current = null;
-      }, 240);
-    } else {
-      hasMountedThemeRef.current = true;
-    }
+  const applySystemTheme = useCallback((nextSysTheme: ResolvedTheme) => {
+    if (systemThemeRef.current === nextSysTheme) return;
+    systemThemeRef.current = nextSysTheme;
 
-    root.setAttribute('data-theme', resolvedTheme);
-    root.style.colorScheme = resolvedTheme;
+    if (settingsRef.current.theme === 'system') {
+      runSmoothThemeTransition(
+        nextSysTheme,
+        () => {
+          setSystemTheme(nextSysTheme);
+        },
+        { skipAnimation: showSplashRef.current }
+      );
+    } else {
+      setSystemTheme(nextSysTheme);
+    }
+  }, []);
+
+  // Ensure DOM theme attributes stay synchronized on mount and fallback renders
+  useEffect(() => {
+    applyDomThemeAttributes(resolvedTheme);
   }, [resolvedTheme]);
 
   // Keep Electron main process background color & persisted startup preference synced
@@ -143,14 +235,24 @@ export default function App() {
     window.folixAPI.setThemePreference(settings.theme);
   }, [settings.theme]);
 
-  // Update window title
+  // Update window title with subtle unsaved indicator
   useEffect(() => {
-    document.title = activeTab ? `${activeTab.fileName} — Folix` : 'Folix';
-  }, [activeTab]);
+    if (!activeTab) {
+      document.title = 'Folix';
+      return;
+    }
+    const dirtyPrefix =
+      activeTab.content !== activeTab.savedContent ? '● ' : '';
+    document.title = `${dirtyPrefix}${activeTab.fileName} — Folix`;
+  }, [activeTab?.fileName, activeTab?.content, activeTab?.savedContent]);
 
   // Open file payload into tab (reusing existing tab if same path)
   const applyFileReadResult = useCallback(
-    (result: FileReadResponse, anchor?: string) => {
+    (
+      result: FileReadResponse,
+      anchor?: string,
+      allowOverwriteDirty = false
+    ) => {
       if (!result.ok) {
         pushToast({
           type: 'error',
@@ -161,6 +263,8 @@ export default function App() {
       }
 
       const payload = result.data;
+      const canonicalContent = payload.content.replace(/\r\n/g, '\n');
+
       setRecentFiles(
         addRecentFile({
           filePath: payload.filePath,
@@ -175,13 +279,24 @@ export default function App() {
         );
         if (existing) {
           setActiveTabId(existing.id);
+          if (!allowOverwriteDirty && existing.content !== existing.savedContent) {
+            return anchor
+              ? prevTabs.map((t) =>
+                  t.id === existing.id ? { ...t, pendingAnchor: anchor } : t
+                )
+              : prevTabs;
+          }
+          editorStatesRef.current.delete(existing.id);
           return prevTabs.map((t) =>
             t.id === existing.id
               ? {
                   ...t,
                   fileName: payload.fileName,
                   directory: payload.directory,
-                  content: payload.content,
+                  content: canonicalContent,
+                  savedContent: canonicalContent,
+                  encoding: payload.encoding || 'utf8',
+                  lineEnding: payload.lineEnding || '\n',
                   size: payload.size,
                   updatedAt: payload.updatedAt,
                   pendingAnchor: anchor,
@@ -196,10 +311,14 @@ export default function App() {
           filePath: payload.filePath,
           fileName: payload.fileName,
           directory: payload.directory,
-          content: payload.content,
+          content: canonicalContent,
+          savedContent: canonicalContent,
+          encoding: payload.encoding || 'utf8',
+          lineEnding: payload.lineEnding || '\n',
           size: payload.size,
           updatedAt: payload.updatedAt,
           scrollTop: 0,
+          mode: 'read',
           pendingAnchor: anchor,
         };
         setActiveTabId(newId);
@@ -228,7 +347,7 @@ export default function App() {
     const systemThemePromise = window.folixAPI
       .getSystemTheme()
       .then((theme) => {
-        if (mounted) setSystemTheme(theme);
+        if (mounted) applySystemTheme(theme);
       })
       .catch(() => undefined);
 
@@ -275,7 +394,10 @@ export default function App() {
     });
 
     const unsubMax = window.folixAPI.onMaximizedChange(setIsMaximized);
-    const unsubTheme = window.folixAPI.onSystemThemeChange(setSystemTheme);
+    const unsubTheme = window.folixAPI.onSystemThemeChange(applySystemTheme);
+    const unsubRequestClose = window.folixAPI.onRequestCloseWindow(() => {
+      requestCloseAppRef.current();
+    });
     const unsubOpenFile = window.folixAPI.onOpenFileResult((res) => {
       if (!res.ok) {
         applyFileReadResult(res);
@@ -296,7 +418,7 @@ export default function App() {
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleMediaChange = (e: MediaQueryListEvent) => {
-      setSystemTheme(e.matches ? 'dark' : 'light');
+      applySystemTheme(e.matches ? 'dark' : 'light');
     };
     mediaQuery.addEventListener('change', handleMediaChange);
 
@@ -312,10 +434,11 @@ export default function App() {
       }
       unsubMax();
       unsubTheme();
+      unsubRequestClose();
       unsubOpenFile();
       mediaQuery.removeEventListener('change', handleMediaChange);
     };
-  }, [applyFileReadResult]);
+  }, [applyFileReadResult, applySystemTheme]);
 
   const runWithDocumentLoader = useCallback(
     async (
@@ -390,48 +513,230 @@ export default function App() {
 
   const handleOpenRelativeLink = useCallback(
     async (relPath: string) => {
-      if (!activeTab) return;
+      const currentTab = activeTabRef.current;
+      if (!currentTab) return;
       const cleanRel = relPath.split('#')[0];
       await runWithDocumentLoader(getFileNameHint(cleanRel), async () => {
         const res = await window.folixAPI.openRelativeFile(
-          activeTab.directory,
+          currentTab.directory,
           relPath
         );
         applyFileReadResult(res, res.anchor);
         return res.ok;
       });
     },
-    [activeTab, applyFileReadResult, runWithDocumentLoader]
+    [applyFileReadResult, runWithDocumentLoader]
   );
 
-  const handleReloadActiveFile = useCallback(async () => {
-    if (!activeTab) return;
-    await runWithDocumentLoader(activeTab.fileName, async () => {
-      const res = await window.folixAPI.readFile(activeTab.filePath);
-      if (!res.ok) {
-        pushToast({
-          type: 'error',
-          title: 'Falha ao recarregar',
-          description: res.error,
-        });
-        return false;
-      }
-      applyFileReadResult(res);
-      pushToast(
-        {
-          type: 'info',
-          title: 'Documento atualizado',
-          description: `${activeTab.fileName} foi recarregado do disco.`,
-        },
-        2600
-      );
-      return true;
-    });
-  }, [activeTab, applyFileReadResult, pushToast, runWithDocumentLoader]);
+  const handleOpenExternalError = useCallback(
+    (message: string) => {
+      pushToast({
+        type: 'error',
+        title: 'Não foi possível abrir o link',
+        description: message,
+      });
+    },
+    [pushToast]
+  );
 
-  const handleCloseTab = useCallback(
+  const handleImageClick = useCallback((src: string, alt?: string) => {
+    setLightboxImage({ src, alt });
+  }, []);
+
+  const handleCloseSidebar = useCallback(() => {
+    updateSettings({ sidebarOpen: false });
+  }, [updateSettings]);
+
+  const handleChangeTabContent = useCallback(
+    (tabId: string, nextContent: string) => {
+      const byteSize = new Blob([nextContent]).size;
+      setTabs((prevTabs) =>
+        prevTabs.map((t) =>
+          t.id === tabId ? { ...t, content: nextContent, size: byteSize } : t
+        )
+      );
+    },
+    []
+  );
+
+  const handleChangeMode = useCallback(
+    (nextMode: DocumentMode) => {
+      const tab = activeTabRef.current;
+      if (!tab || (tab.mode ?? 'read') === nextMode) return;
+
+      const currentHeading = activeHeadingId;
+      const shouldJumpEditToHeading =
+        nextMode === 'edit' &&
+        !editorScrollPositionsRef.current.has(tab.id) &&
+        Boolean(currentHeading);
+
+      setTabs((prevTabs) =>
+        prevTabs.map((t) => (t.id === tab.id ? { ...t, mode: nextMode } : t))
+      );
+
+      if (shouldJumpEditToHeading && currentHeading) {
+        const headingItem = tocItemsRef.current.find(
+          (item) => item.id === currentHeading
+        );
+        if (headingItem) {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              editorHandleRef.current?.scrollToLine(headingItem.line);
+            });
+          });
+        }
+      }
+    },
+    [activeHeadingId]
+  );
+
+  const handleSaveTab = useCallback(
+    async (tab: DocumentTab, forceOverwrite = false): Promise<boolean> => {
+      setIsSaving(true);
+      try {
+        const res = await window.folixAPI.saveFile({
+          filePath: tab.filePath,
+          content: tab.content,
+          encoding: tab.encoding,
+          lineEnding: tab.lineEnding,
+          expectedUpdatedAt: tab.updatedAt,
+          forceOverwrite,
+        });
+
+        if (!res.ok) {
+          if (res.conflict) {
+            setPendingConfirm({
+              kind: 'conflict',
+              tabId: tab.id,
+              fileName: tab.fileName,
+              diskUpdatedAt: res.diskUpdatedAt,
+            });
+            return false;
+          }
+          pushToast({
+            type: 'error',
+            title: 'Não foi possível salvar o arquivo',
+            description: res.error,
+          });
+          return false;
+        }
+
+        const savedCanonical = res.data.content.replace(/\r\n/g, '\n');
+        setTabs((prevTabs) =>
+          prevTabs.map((t) =>
+            t.id === tab.id
+              ? {
+                  ...t,
+                  filePath: res.data.filePath,
+                  fileName: res.data.fileName,
+                  directory: res.data.directory,
+                  content: savedCanonical,
+                  savedContent: savedCanonical,
+                  encoding: res.data.encoding || t.encoding,
+                  lineEnding: res.data.lineEnding || t.lineEnding,
+                  size: res.data.size,
+                  updatedAt: res.data.updatedAt,
+                }
+              : t
+          )
+        );
+        pushToast(
+          {
+            type: 'success',
+            title: 'Documento salvo',
+            description: res.data.fileName,
+          },
+          2400
+        );
+        return true;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [pushToast]
+  );
+
+  const handleSaveTabAs = useCallback(
+    async (tab: DocumentTab): Promise<boolean> => {
+      setIsSaving(true);
+      try {
+        const res = await window.folixAPI.saveFileAs({
+          defaultPath: tab.filePath,
+          content: tab.content,
+          encoding: tab.encoding,
+          lineEnding: tab.lineEnding,
+        });
+
+        if (!res.ok) {
+          if (!res.cancelled && res.error) {
+            pushToast({
+              type: 'error',
+              title: 'Não foi possível salvar cópia',
+              description: res.error,
+            });
+          }
+          return false;
+        }
+
+        const savedCanonical = res.data.content.replace(/\r\n/g, '\n');
+        setRecentFiles(
+          addRecentFile({
+            filePath: res.data.filePath,
+            fileName: res.data.fileName,
+            directory: res.data.directory,
+          })
+        );
+        setTabs((prevTabs) =>
+          prevTabs.map((t) =>
+            t.id === tab.id
+              ? {
+                  ...t,
+                  filePath: res.data.filePath,
+                  fileName: res.data.fileName,
+                  directory: res.data.directory,
+                  content: savedCanonical,
+                  savedContent: savedCanonical,
+                  encoding: res.data.encoding || t.encoding,
+                  lineEnding: res.data.lineEnding || t.lineEnding,
+                  size: res.data.size,
+                  updatedAt: res.data.updatedAt,
+                }
+              : t
+          )
+        );
+        pushToast(
+          {
+            type: 'success',
+            title: 'Cópia salva com sucesso',
+            description: res.data.filePath,
+          },
+          3200
+        );
+        return true;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [pushToast]
+  );
+
+  const handleSaveActiveFile = useCallback(async () => {
+    const tab = activeTabRef.current;
+    if (!tab) return;
+    await handleSaveTab(tab, false);
+  }, [handleSaveTab]);
+
+  const handleSaveActiveFileAs = useCallback(async () => {
+    const tab = activeTabRef.current;
+    if (!tab) return;
+    await handleSaveTabAs(tab);
+  }, [handleSaveTabAs]);
+
+  const forceCloseTab = useCallback(
     (tabId: string) => {
       scrollPositionsRef.current.delete(tabId);
+      editorScrollPositionsRef.current.delete(tabId);
+      editorStatesRef.current.delete(tabId);
       setTabs((prevTabs) => {
         const idx = prevTabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return prevTabs;
@@ -452,10 +757,181 @@ export default function App() {
     [activeTabId]
   );
 
+  const requestCloseTab = useCallback(
+    (tabId: string) => {
+      const target = tabsRef.current.find((t) => t.id === tabId);
+      if (!target) return;
+      if (target.content !== target.savedContent) {
+        setPendingConfirm({
+          kind: 'unsaved',
+          reason: 'close-tab',
+          fileNames: [target.fileName],
+          targetTabId: target.id,
+        });
+        return;
+      }
+      forceCloseTab(tabId);
+    },
+    [forceCloseTab]
+  );
+
+  const executeReloadTab = useCallback(
+    async (tab: DocumentTab) => {
+      await runWithDocumentLoader(tab.fileName, async () => {
+        const res = await window.folixAPI.readFile(tab.filePath);
+        if (!res.ok) {
+          pushToast({
+            type: 'error',
+            title: 'Falha ao recarregar',
+            description: res.error,
+          });
+          return false;
+        }
+        applyFileReadResult(res, undefined, true);
+        pushToast(
+          {
+            type: 'info',
+            title: 'Documento atualizado',
+            description: `${tab.fileName} foi recarregado do disco.`,
+          },
+          2600
+        );
+        return true;
+      });
+    },
+    [applyFileReadResult, pushToast, runWithDocumentLoader]
+  );
+
+  const requestReloadActiveFile = useCallback(async () => {
+    const tab = activeTabRef.current;
+    if (!tab) return;
+    if (tab.content !== tab.savedContent) {
+      setPendingConfirm({
+        kind: 'unsaved',
+        reason: 'reload-file',
+        fileNames: [tab.fileName],
+        targetTabId: tab.id,
+      });
+      return;
+    }
+    await executeReloadTab(tab);
+  }, [executeReloadTab]);
+
+  const requestCloseApp = useCallback(() => {
+    const dirtyTabs = tabsRef.current.filter(
+      (t) => t.content !== t.savedContent
+    );
+    if (dirtyTabs.length > 0) {
+      setPendingConfirm({
+        kind: 'unsaved',
+        reason: 'close-app',
+        fileNames: dirtyTabs.map((t) => t.fileName),
+      });
+      return;
+    }
+    window.folixAPI.confirmCloseWindow();
+  }, []);
+  requestCloseAppRef.current = requestCloseApp;
+
+  const handleConfirmSaveAndContinue = useCallback(async () => {
+    if (!pendingConfirm || pendingConfirm.kind !== 'unsaved') return;
+    const action = pendingConfirm;
+
+    if (action.reason === 'close-tab' && action.targetTabId) {
+      const target = tabsRef.current.find((t) => t.id === action.targetTabId);
+      setPendingConfirm(null);
+      if (target) {
+        const saved = await handleSaveTab(target, false);
+        if (saved) forceCloseTab(target.id);
+      }
+      return;
+    }
+
+    if (action.reason === 'reload-file' && action.targetTabId) {
+      const target = tabsRef.current.find((t) => t.id === action.targetTabId);
+      setPendingConfirm(null);
+      if (target) {
+        const saved = await handleSaveTab(target, false);
+        if (saved) await executeReloadTab(target);
+      }
+      return;
+    }
+
+    if (action.reason === 'close-app') {
+      const dirtyTabs = tabsRef.current.filter(
+        (t) => t.content !== t.savedContent
+      );
+      setPendingConfirm(null);
+      for (const dirtyTab of dirtyTabs) {
+        const saved = await handleSaveTab(dirtyTab, false);
+        if (!saved) return;
+      }
+      window.folixAPI.confirmCloseWindow();
+    }
+  }, [pendingConfirm, handleSaveTab, forceCloseTab, executeReloadTab]);
+
+  const handleConfirmDiscardAndContinue = useCallback(async () => {
+    if (!pendingConfirm || pendingConfirm.kind !== 'unsaved') return;
+    const action = pendingConfirm;
+    setPendingConfirm(null);
+
+    if (action.reason === 'close-tab' && action.targetTabId) {
+      forceCloseTab(action.targetTabId);
+      return;
+    }
+
+    if (action.reason === 'reload-file' && action.targetTabId) {
+      const target = tabsRef.current.find((t) => t.id === action.targetTabId);
+      if (target) await executeReloadTab(target);
+      return;
+    }
+
+    if (action.reason === 'close-app') {
+      window.folixAPI.confirmCloseWindow();
+    }
+  }, [pendingConfirm, forceCloseTab, executeReloadTab]);
+
+  const handleOverwriteConflict = useCallback(async () => {
+    if (!pendingConfirm || pendingConfirm.kind !== 'conflict') return;
+    const target = tabsRef.current.find((t) => t.id === pendingConfirm.tabId);
+    setPendingConfirm(null);
+    if (target) {
+      await handleSaveTab(target, true);
+    }
+  }, [pendingConfirm, handleSaveTab]);
+
+  const handleSaveCopyConflict = useCallback(async () => {
+    if (!pendingConfirm || pendingConfirm.kind !== 'conflict') return;
+    const target = tabsRef.current.find((t) => t.id === pendingConfirm.tabId);
+    setPendingConfirm(null);
+    if (target) {
+      await handleSaveTabAs(target);
+    }
+  }, [pendingConfirm, handleSaveTabAs]);
+
+  const prepareRenderedPrintView = useCallback(async () => {
+    const tab = activeTabRef.current;
+    if (!tab) return;
+    const isEditorOnly =
+      (tab.mode ?? 'read') === 'edit' && editorLayout === 'editor';
+    if (!isEditorOnly) return;
+
+    flushSync(() => {
+      setIsPreparingPrint(true);
+    });
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => resolve());
+      });
+    });
+  }, [editorLayout]);
+
   const handleExportPdf = useCallback(async () => {
     if (!activeTab || isExportingPdf) return;
     setIsExportingPdf(true);
+    const hasUnsavedEdits = activeTab.content !== activeTab.savedContent;
     try {
+      await prepareRenderedPrintView();
       const documentTitle = getDocumentTitle(
         activeTab.content,
         activeTab.fileName
@@ -471,7 +947,9 @@ export default function App() {
         pushToast({
           type: 'success',
           title: 'PDF exportado com sucesso',
-          description: res.filePath,
+          description: hasUnsavedEdits
+            ? `${res.filePath} (inclui alterações ainda não salvas)`
+            : res.filePath,
         });
       } else if (res.error) {
         pushToast({
@@ -481,23 +959,50 @@ export default function App() {
         });
       }
     } finally {
+      setIsPreparingPrint(false);
       setIsExportingPdf(false);
     }
-  }, [activeTab, isExportingPdf, pushToast]);
+  }, [activeTab, isExportingPdf, prepareRenderedPrintView, pushToast]);
 
   const handlePrint = useCallback(async () => {
     if (!activeTab) return;
-    const res = await window.folixAPI.printDocument();
-    if (!res.ok && res.error) {
-      pushToast({
-        type: 'error',
-        title: 'Erro de impressão',
-        description: res.error,
-      });
+    const hasUnsavedEdits = activeTab.content !== activeTab.savedContent;
+    try {
+      await prepareRenderedPrintView();
+      if (hasUnsavedEdits) {
+        pushToast(
+          {
+            type: 'info',
+            title: 'Impressão com alterações atuais',
+            description:
+              'A visualização de impressão inclui suas edições não salvas.',
+          },
+          3200
+        );
+      }
+      const res = await window.folixAPI.printDocument();
+      if (!res.ok && res.error) {
+        pushToast({
+          type: 'error',
+          title: 'Erro de impressão',
+          description: res.error,
+        });
+      }
+    } finally {
+      setIsPreparingPrint(false);
     }
-  }, [activeTab, pushToast]);
+  }, [activeTab, prepareRenderedPrintView, pushToast]);
 
   const handleSelectTocHeading = useCallback((id: string) => {
+    const tab = activeTabRef.current;
+    if (tab && (tab.mode ?? 'read') === 'edit') {
+      const tocItem = tocItemsRef.current.find((item) => item.id === id);
+      if (tocItem) {
+        editorHandleRef.current?.scrollToLine(tocItem.line);
+        setActiveHeadingId(tocItem.id);
+      }
+    }
+
     const article = articleRef.current;
     if (!article) return;
     const headings = Array.from(
@@ -520,6 +1025,34 @@ export default function App() {
     scrollPositionsRef.current.set(tabId, scrollTop);
   }, []);
 
+  const getSavedEditorScrollTop = useCallback((tabId: string) => {
+    return editorScrollPositionsRef.current.get(tabId) ?? 0;
+  }, []);
+
+  const handleSaveEditorScrollTop = useCallback(
+    (tabId: string, scrollTop: number) => {
+      editorScrollPositionsRef.current.set(tabId, scrollTop);
+    },
+    []
+  );
+
+  const handleEditorSearch = useCallback(
+    (query: string, caseSensitive: boolean, direction?: 'next' | 'prev') => {
+      return (
+        editorHandleRef.current?.findAndHighlight(
+          query,
+          caseSensitive,
+          direction
+        ) ?? { total: 0, current: 0 }
+      );
+    },
+    []
+  );
+
+  const handleEditorClearSearch = useCallback(() => {
+    editorHandleRef.current?.clearSearch();
+  }, []);
+
   const handleConsumePendingAnchor = useCallback((tabId: string) => {
     setTabs((prev) =>
       prev.map((t) =>
@@ -531,7 +1064,7 @@ export default function App() {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showSplash) return;
+      if (showSplash || e.defaultPrevented) return;
       const ctrlOrCmd = e.ctrlKey || e.metaKey;
 
       if (ctrlOrCmd && e.key === ',') {
@@ -548,6 +1081,26 @@ export default function App() {
 
       if (!activeTab) return;
 
+      if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSaveActiveFileAs();
+        return;
+      }
+
+      if (ctrlOrCmd && e.key.toLowerCase() === 's' && !e.shiftKey) {
+        e.preventDefault();
+        handleSaveActiveFile();
+        return;
+      }
+
+      if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        handleChangeMode(
+          (activeTab.mode ?? 'read') === 'edit' ? 'read' : 'edit'
+        );
+        return;
+      }
+
       if (ctrlOrCmd && e.key.toLowerCase() === 'f' && !e.shiftKey) {
         e.preventDefault();
         setIsSearchOpen(true);
@@ -555,6 +1108,9 @@ export default function App() {
       }
 
       if (ctrlOrCmd && e.key.toLowerCase() === 'b') {
+        if ((e.target as HTMLElement | null)?.closest('.cm-editor')) {
+          return;
+        }
         e.preventDefault();
         updateSettings({ sidebarOpen: !settings.sidebarOpen });
         return;
@@ -562,17 +1118,17 @@ export default function App() {
 
       if (ctrlOrCmd && e.key.toLowerCase() === 'w') {
         e.preventDefault();
-        handleCloseTab(activeTab.id);
+        requestCloseTab(activeTab.id);
         return;
       }
 
       if (ctrlOrCmd && e.key.toLowerCase() === 'r') {
         e.preventDefault();
-        handleReloadActiveFile();
+        requestReloadActiveFile();
         return;
       }
 
-      if (ctrlOrCmd && e.key.toLowerCase() === 'e') {
+      if (ctrlOrCmd && e.key.toLowerCase() === 'e' && !e.shiftKey) {
         e.preventDefault();
         handleExportPdf();
         return;
@@ -625,7 +1181,8 @@ export default function App() {
         isImmersive &&
         !isSearchOpen &&
         !isSettingsOpen &&
-        !lightboxImage
+        !lightboxImage &&
+        !pendingConfirm
       ) {
         e.preventDefault();
         setIsImmersive(false);
@@ -644,9 +1201,13 @@ export default function App() {
     isSearchOpen,
     isSettingsOpen,
     lightboxImage,
+    pendingConfirm,
     handleOpenFilesDialog,
-    handleCloseTab,
-    handleReloadActiveFile,
+    handleSaveActiveFile,
+    handleSaveActiveFileAs,
+    handleChangeMode,
+    requestCloseTab,
+    requestReloadActiveFile,
     handleExportPdf,
     handlePrint,
     updateSettings,
@@ -719,7 +1280,7 @@ export default function App() {
           isMaximized={isMaximized}
           resolvedTheme={resolvedTheme}
           onSelectTab={(id) => setActiveTabId(id)}
-          onCloseTab={handleCloseTab}
+          onCloseTab={requestCloseTab}
           onShowWelcome={() => setActiveTabId(null)}
           onOpenFiles={handleOpenFilesDialog}
           onQuickToggleTheme={() =>
@@ -730,7 +1291,7 @@ export default function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onMinimize={() => window.folixAPI.minimizeWindow()}
           onToggleMaximize={() => window.folixAPI.toggleMaximizeWindow()}
-          onCloseWindow={() => window.folixAPI.closeWindow()}
+          onCloseWindow={requestCloseApp}
         />
       )}
 
@@ -741,14 +1302,24 @@ export default function App() {
           tocCount={tocItems.length}
           settings={settings}
           systemTheme={systemTheme}
+          mode={activeTab.mode ?? 'read'}
+          editorLayout={editorLayout}
+          isDirty={activeTab.content !== activeTab.savedContent}
+          isSaving={isSaving}
           isSearchOpen={isSearchOpen}
           isExportingPdf={isExportingPdf}
           onToggleSidebar={() =>
             updateSettings({ sidebarOpen: !settings.sidebarOpen })
           }
+          onChangeMode={handleChangeMode}
+          onToggleSplitLayout={() =>
+            setEditorLayout((prev) => (prev === 'split' ? 'editor' : 'split'))
+          }
+          onSaveFile={handleSaveActiveFile}
+          onSaveFileAs={handleSaveActiveFileAs}
           onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
           onToggleImmersive={() => setIsImmersive(true)}
-          onReloadFile={handleReloadActiveFile}
+          onReloadFile={requestReloadActiveFile}
           onShowInFolder={() => window.folixAPI.showInFolder(activeTab.filePath)}
           onUpdateSettings={updateSettings}
           onOpenSettings={() => setIsSettingsOpen(true)}
@@ -771,7 +1342,7 @@ export default function App() {
               activeHeadingId={activeHeadingId}
               isOpen={settings.sidebarOpen}
               onSelectHeading={handleSelectTocHeading}
-              onClose={() => updateSettings({ sidebarOpen: false })}
+              onClose={handleCloseSidebar}
             />
           )}
 
@@ -780,6 +1351,9 @@ export default function App() {
               isOpen={isSearchOpen}
               containerRef={articleRef}
               documentKey={`${activeTab.id}:${activeTab.updatedAt}`}
+              isEditorSearchMode={(activeTab.mode ?? 'read') === 'edit'}
+              onEditorSearch={handleEditorSearch}
+              onEditorClearSearch={handleEditorClearSearch}
               onClose={() => setIsSearchOpen(false)}
             />
 
@@ -795,26 +1369,63 @@ export default function App() {
               </button>
             )}
 
-            <MarkdownViewer
-              documentTab={activeTab}
-              settings={settings}
-              tocItems={tocItems}
-              scrollContainerRef={scrollContainerRef}
-              articleRef={articleRef}
-              getSavedScrollTop={getSavedScrollTop}
-              onSaveScrollTop={handleSaveScrollTop}
-              onActiveHeadingChange={setActiveHeadingId}
-              onConsumePendingAnchor={handleConsumePendingAnchor}
-              onOpenRelativeLink={handleOpenRelativeLink}
-              onOpenExternalError={(message) =>
-                pushToast({
-                  type: 'error',
-                  title: 'Não foi possível abrir o link',
-                  description: message,
-                })
-              }
-              onImageClick={(src, alt) => setLightboxImage({ src, alt })}
-            />
+            <div className="folix-print-root flex min-h-0 flex-1 overflow-hidden">
+              {(activeTab.mode ?? 'read') === 'edit' && (
+                <div
+                  className={
+                    editorLayout === 'split'
+                      ? 'no-print flex min-w-0 w-1/2 flex-col border-r border-folix-border overflow-hidden'
+                      : 'no-print flex min-w-0 flex-1 flex-col overflow-hidden'
+                  }
+                >
+                  <MarkdownEditor
+                    ref={editorHandleRef}
+                    documentTab={activeTab}
+                    fontFamily={settings.fontFamily}
+                    fontSize={settings.fontSize}
+                    pageWidth={settings.pageWidth}
+                    isSplitView={editorLayout === 'split'}
+                    isSaving={isSaving}
+                    editorStatesMap={editorStatesRef.current}
+                    onChangeContent={handleChangeTabContent}
+                    onSaveFile={handleSaveActiveFile}
+                    onSaveScrollTop={handleSaveEditorScrollTop}
+                    getSavedEditorScrollTop={getSavedEditorScrollTop}
+                  />
+                </div>
+              )}
+
+              {((activeTab.mode ?? 'read') === 'read' ||
+                editorLayout === 'split' ||
+                isPreparingPrint) && (
+                <div
+                  className={
+                    (activeTab.mode ?? 'read') === 'edit'
+                      ? editorLayout === 'split'
+                        ? 'folix-print-root flex min-w-0 w-1/2 flex-col overflow-hidden'
+                        : 'folix-print-root hidden print:block w-full'
+                      : 'folix-print-root flex min-w-0 flex-1 flex-col overflow-hidden'
+                  }
+                >
+                  <MarkdownViewer
+                    documentTab={previewTab ?? activeTab}
+                    fontFamily={settings.fontFamily}
+                    fontSize={settings.fontSize}
+                    pageWidth={settings.pageWidth}
+                    tocItems={tocItems}
+                    scrollContainerRef={scrollContainerRef}
+                    articleRef={articleRef}
+                    getSavedScrollTop={getSavedScrollTop}
+                    onSaveScrollTop={handleSaveScrollTop}
+                    onActiveHeadingChange={setActiveHeadingId}
+                    onConsumePendingAnchor={handleConsumePendingAnchor}
+                    onOpenRelativeLink={handleOpenRelativeLink}
+                    onOpenExternalError={handleOpenExternalError}
+                    onImageClick={handleImageClick}
+                  />
+                </div>
+              )}
+            </div>
           </main>
         </div>
       ) : (
@@ -852,6 +1463,17 @@ export default function App() {
         systemTheme={systemTheme}
         onUpdate={updateSettings}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Unsaved Changes & File Conflict Confirmation Modal */}
+      <UnsavedChangesModal
+        prompt={pendingConfirm}
+        isBusy={isSaving}
+        onCancel={() => setPendingConfirm(null)}
+        onSaveAndContinue={handleConfirmSaveAndContinue}
+        onDiscardAndContinue={handleConfirmDiscardAndContinue}
+        onOverwriteConflict={handleOverwriteConflict}
+        onSaveCopyConflict={handleSaveCopyConflict}
       />
 
       {/* Image Lightbox Modal */}

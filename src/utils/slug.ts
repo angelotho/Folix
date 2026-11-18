@@ -26,7 +26,8 @@ export function extractTocFromMarkdown(markdown: string): TocItem[] {
   let fenceChar = '';
   let fenceLength = 0;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
 
     // Track fenced code blocks (``` or ~~~) so comments like `# python` aren't treated as headings
@@ -56,7 +57,7 @@ export function extractTocFromMarkdown(markdown: string): TocItem[] {
     if (!cleanText) continue;
 
     const id = slugger.slug(cleanText);
-    items.push({ id, text: cleanText, level });
+    items.push({ id, text: cleanText, level, line: i + 1 });
   }
 
   return items;

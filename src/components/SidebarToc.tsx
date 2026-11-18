@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ListTree, PanelLeftClose, Search, X } from 'lucide-react';
 import type { TocItem } from '../types/folix';
 import { cn } from '../utils/format';
@@ -11,7 +11,7 @@ interface SidebarTocProps {
   onClose: () => void;
 }
 
-export function SidebarToc({
+export const SidebarToc = memo(function SidebarToc({
   items,
   activeHeadingId,
   isOpen,
@@ -34,7 +34,7 @@ export function SidebarToc({
   return (
     <aside
       className={cn(
-        'no-print flex shrink-0 flex-col border-r border-folix-border bg-folix-sidebar transition-all duration-200 ease-out overflow-hidden',
+        'no-print flex shrink-0 flex-col border-r border-folix-border bg-folix-sidebar transition-[width,opacity] duration-200 ease-out overflow-hidden',
         isOpen ? 'w-[272px] opacity-100' : 'w-0 border-r-0 opacity-0 pointer-events-none'
       )}
       aria-label="Índice lateral do documento"
@@ -112,7 +112,7 @@ export function SidebarToc({
                       onClick={() => onSelectHeading(item.id)}
                       style={{ paddingLeft: `${depth * 13 + 10}px` }}
                       className={cn(
-                        'group relative flex w-full items-center rounded-lg py-1.5 pr-2.5 text-left text-[12.5px] leading-snug transition-all duration-150',
+                        'group relative flex w-full items-center rounded-lg py-1.5 pr-2.5 text-left text-[12.5px] leading-snug',
                         isActive
                           ? 'bg-folix-accent-soft font-semibold text-folix-accent'
                           : item.level === minLevel
@@ -138,5 +138,5 @@ export function SidebarToc({
       </div>
     </aside>
   );
-}
+});
 

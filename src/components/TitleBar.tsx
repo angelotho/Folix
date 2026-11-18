@@ -86,6 +86,7 @@ export function TitleBar({
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 pr-2">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
+          const isDirty = tab.content !== tab.savedContent;
           return (
             <div
               key={tab.id}
@@ -102,7 +103,11 @@ export function TitleBar({
                   onCloseTab(tab.id);
                 }
               }}
-              title={tab.filePath}
+              title={
+                isDirty
+                  ? `${tab.filePath}\nAlterações não salvas`
+                  : tab.filePath
+              }
               role="tab"
               aria-selected={isActive}
             >
@@ -120,6 +125,13 @@ export function TitleBar({
                 )}
               />
               <span className="min-w-0 flex-1 truncate">{tab.fileName}</span>
+              {isDirty && (
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.18)]"
+                  title="Alterações não salvas"
+                  aria-label="Alterações não salvas"
+                />
+              )}
               <button
                 type="button"
                 onClick={(e) => {

@@ -6,6 +6,13 @@ interface SearchBarProps {
   isOpen: boolean;
   containerRef: React.RefObject<HTMLElement>;
   documentKey: string;
+  isEditorSearchMode?: boolean;
+  onEditorSearch?: (
+    query: string,
+    caseSensitive: boolean,
+    direction?: 'next' | 'prev'
+  ) => { total: number; current: number };
+  onEditorClearSearch?: () => void;
   onClose: () => void;
 }
 
@@ -94,6 +101,9 @@ export function SearchBar({
   isOpen,
   containerRef,
   documentKey,
+  isEditorSearchMode = false,
+  onEditorSearch,
+  onEditorClearSearch,
   onClose,
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -115,7 +125,7 @@ export function SearchBar({
     }
   }, []);
 
-  // Focus input when opened
+  // Focus input when opened, clear highlights when closed
   useEffect(() => {
     if (isOpen) {
       window.setTimeout(() => {
@@ -124,28 +134,42 @@ export function SearchBar({
       }, 20);
     } else {
       clearHighlights(containerRef.current);
+      onEditorClearSearch?.();
       matchesRef.current = [];
       setTotalMatches(0);
       setActiveIndex(-1);
     }
-  }, [isOpen, containerRef]);
+  }, [isOpen, containerRef, onEditorClearSearch]);
 
-  // Run search whenever query, case sensitivity, or document changes
+  // Run search whenever query, case sensitivity, document, or mode changes
   useEffect(() => {
-    if (!isOpen || !containerRef.current) return;
+    if (!isOpen) return;
 
-    const trimmed = query;
-    if (!trimmed) {
+    if (!query) {
       clearHighlights(containerRef.current);
+      onEditorClearSearch?.();
       matchesRef.current = [];
       setTotalMatches(0);
       setActiveIndex(-1);
       return;
     }
 
+    if (isEditorSearchMode && onEditorSearch) {
+      clearHighlights(containerRef.current);
+      const timer = window.setTimeout(() => {
+        const res = onEditorSearch(query, caseSensitive);
+        setTotalMatches(res.total);
+        setActiveIndex(res.total > 0 ? Math.max(0, res.current - 1) : -1);
+      }, 60);
+      return () => window.clearTimeout(timer);
+    }
+
+    onEditorClearSearch?.();
+    if (!containerRef.current) return;
+
     const timer = window.setTimeout(() => {
       if (!containerRef.current) return;
-      const marks = highlightMatches(containerRef.current, trimmed, caseSensitive);
+      const marks = highlightMatches(containerRef.current, query, caseSensitive);
       matchesRef.current = marks;
       setTotalMatches(marks.length);
       if (marks.length > 0) {
@@ -157,19 +181,36 @@ export function SearchBar({
     }, 60);
 
     return () => window.clearTimeout(timer);
-  }, [isOpen, query, caseSensitive, documentKey, containerRef, activateMatch]);
+  }, [
+    isOpen,
+    query,
+    caseSensitive,
+    documentKey,
+    isEditorSearchMode,
+    containerRef,
+    activateMatch,
+    onEditorSearch,
+    onEditorClearSearch,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearHighlights(containerRef.current);
+      onEditorClearSearch?.();
     };
-  }, [containerRef]);
+  }, [containerRef, onEditorClearSearch]);
 
   if (!isOpen) return null;
 
   const goToNext = () => {
     if (totalMatches === 0) return;
+    if (isEditorSearchMode && onEditorSearch) {
+      const res = onEditorSearch(query, caseSensitive, 'next');
+      setTotalMatches(res.total);
+      setActiveIndex(res.total > 0 ? Math.max(0, res.current - 1) : -1);
+      return;
+    }
     const next = (activeIndex + 1) % totalMatches;
     setActiveIndex(next);
     activateMatch(next, true);
@@ -177,6 +218,12 @@ export function SearchBar({
 
   const goToPrev = () => {
     if (totalMatches === 0) return;
+    if (isEditorSearchMode && onEditorSearch) {
+      const res = onEditorSearch(query, caseSensitive, 'prev');
+      setTotalMatches(res.total);
+      setActiveIndex(res.total > 0 ? Math.max(0, res.current - 1) : -1);
+      return;
+    }
     const prev = (activeIndex - 1 + totalMatches) % totalMatches;
     setActiveIndex(prev);
     activateMatch(prev, true);

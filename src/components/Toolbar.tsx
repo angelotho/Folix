@@ -1,18 +1,29 @@
 import { useState } from 'react';
 import {
   BookOpen,
+  Columns2,
+  Eye,
   FileDown,
+  FolderDown,
   FolderOpen,
   ListTree,
   Loader2,
+  PenLine,
   Printer,
   RotateCw,
+  Save,
   Search,
   SlidersHorizontal,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import type { DocumentTab, ReaderSettings, ResolvedTheme } from '../types/folix';
+import type {
+  DocumentMode,
+  DocumentTab,
+  EditorLayout,
+  ReaderSettings,
+  ResolvedTheme,
+} from '../types/folix';
 import { cn } from '../utils/format';
 import { AppearancePopover } from './AppearancePopover';
 
@@ -21,9 +32,17 @@ interface ToolbarProps {
   tocCount: number;
   settings: ReaderSettings;
   systemTheme: ResolvedTheme;
+  mode: DocumentMode;
+  editorLayout: EditorLayout;
+  isDirty: boolean;
+  isSaving: boolean;
   isSearchOpen: boolean;
   isExportingPdf: boolean;
   onToggleSidebar: () => void;
+  onChangeMode: (mode: DocumentMode) => void;
+  onToggleSplitLayout: () => void;
+  onSaveFile: () => void;
+  onSaveFileAs: () => void;
   onToggleSearch: () => void;
   onToggleImmersive: () => void;
   onReloadFile: () => void;
@@ -39,9 +58,17 @@ export function Toolbar({
   tocCount,
   settings,
   systemTheme,
+  mode,
+  editorLayout,
+  isDirty,
+  isSaving,
   isSearchOpen,
   isExportingPdf,
   onToggleSidebar,
+  onChangeMode,
+  onToggleSplitLayout,
+  onSaveFile,
+  onSaveFileAs,
   onToggleSearch,
   onToggleImmersive,
   onReloadFile,
@@ -123,8 +150,100 @@ export function Toolbar({
         </button>
       </div>
 
-      {/* Right controls: Search, Zoom, Theme/Appearance, Immersive, Print, Export PDF */}
+      {/* Right controls: Mode switch, Save controls, Search, Zoom, Appearance, Immersive, Print, Export PDF */}
       <div className="flex shrink-0 items-center gap-1.5">
+        {/* Read / Edit Mode Segmented Control */}
+        <div
+          className="inline-flex h-8 items-center rounded-xl border border-folix-border-subtle bg-folix-bg/75 p-0.5"
+          role="group"
+          aria-label="Modo do documento"
+          title="Alternar entre Leitura e Edição (Ctrl+Shift+E)"
+        >
+          <button
+            type="button"
+            onClick={() => onChangeMode('read')}
+            aria-pressed={mode === 'read'}
+            className={cn(
+              'inline-flex h-[26px] items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-all',
+              mode === 'read'
+                ? 'bg-folix-surface text-folix-text shadow-folix-sm ring-1 ring-folix-border'
+                : 'text-folix-text-secondary hover:text-folix-text'
+            )}
+          >
+            <Eye size={13.5} className={mode === 'read' ? 'text-folix-accent' : ''} />
+            <span>Leitura</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeMode('edit')}
+            aria-pressed={mode === 'edit'}
+            className={cn(
+              'inline-flex h-[26px] items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-all',
+              mode === 'edit'
+                ? 'bg-folix-surface text-folix-text shadow-folix-sm ring-1 ring-folix-border'
+                : 'text-folix-text-secondary hover:text-folix-text'
+            )}
+          >
+            <PenLine size={13} className={mode === 'edit' ? 'text-folix-accent' : ''} />
+            <span>Edição</span>
+          </button>
+        </div>
+
+        {/* Split preview toggle (only when Editing) */}
+        {mode === 'edit' && (
+          <button
+            type="button"
+            onClick={onToggleSplitLayout}
+            className={cn(
+              'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium transition-all',
+              editorLayout === 'split'
+                ? 'bg-folix-accent-soft text-folix-accent'
+                : 'text-folix-text-secondary hover:bg-[var(--folix-surface-hover)] hover:text-folix-text'
+            )}
+            title="Visualização dividida: Editor + Prévia"
+            aria-pressed={editorLayout === 'split'}
+          >
+            <Columns2 size={14} />
+            <span className="hidden xl:inline">Dividido</span>
+          </button>
+        )}
+
+        {/* Save & Save As (available in Edit mode or whenever unsaved edits exist) */}
+        {(mode === 'edit' || isDirty) && (
+          <>
+            <button
+              type="button"
+              onClick={onSaveFile}
+              disabled={!isDirty || isSaving}
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium transition-all',
+                isDirty
+                  ? 'border border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20'
+                  : 'text-folix-text-muted opacity-55 cursor-default'
+              )}
+              title="Salvar alterações no arquivo original (Ctrl+S)"
+            >
+              <Save size={14} />
+              <span className="hidden lg:inline">
+                {isSaving ? 'Salvando...' : 'Salvar'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onSaveFileAs}
+              disabled={isSaving}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-folix-text-secondary transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text disabled:opacity-50"
+              title="Salvar como... (Ctrl+Shift+S)"
+              aria-label="Salvar documento como"
+            >
+              <FolderDown size={14.5} />
+            </button>
+          </>
+        )}
+
+        <div className="h-4 w-px bg-folix-border mx-0.5" aria-hidden="true" />
+
         <button
           type="button"
           onClick={onToggleSearch}
@@ -138,13 +257,11 @@ export function Toolbar({
           aria-pressed={isSearchOpen}
         >
           <Search size={14} />
-          <span className="hidden lg:inline">Pesquisar</span>
+          <span className="hidden 2xl:inline">Pesquisar</span>
         </button>
 
-        <div className="hidden sm:block h-4 w-px bg-folix-border mx-0.5" aria-hidden="true" />
-
         {/* Text zoom controls */}
-        <div className="hidden sm:flex items-center rounded-lg border border-folix-border-subtle bg-folix-bg/70 p-0.5">
+        <div className="hidden md:flex items-center rounded-lg border border-folix-border-subtle bg-folix-bg/70 p-0.5">
           <button
             type="button"
             onClick={() => adjustFontSize(-10)}
@@ -158,7 +275,7 @@ export function Toolbar({
           <button
             type="button"
             onClick={() => onUpdateSettings({ fontSize: 100 })}
-            className="min-w-[42px] px-1 text-center font-mono text-[11px] font-medium text-folix-text-secondary hover:text-folix-text"
+            className="min-w-[40px] px-1 text-center font-mono text-[11px] font-medium text-folix-text-secondary hover:text-folix-text"
             title="Restaurar tamanho padrão (Ctrl+0)"
           >
             {settings.fontSize}%
@@ -181,7 +298,7 @@ export function Toolbar({
             type="button"
             onClick={() => setAppearanceOpen((prev) => !prev)}
             className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium transition-all',
+              'inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium transition-all',
               appearanceOpen
                 ? 'bg-folix-accent-soft text-folix-accent'
                 : 'text-folix-text-secondary hover:bg-[var(--folix-surface-hover)] hover:text-folix-text'
@@ -190,7 +307,7 @@ export function Toolbar({
             aria-expanded={appearanceOpen}
           >
             <SlidersHorizontal size={14} />
-            <span className="hidden xl:inline">Leitura</span>
+            <span className="hidden 2xl:inline">Estilo</span>
           </button>
 
           {appearanceOpen && (
@@ -208,12 +325,12 @@ export function Toolbar({
         <button
           type="button"
           onClick={onToggleImmersive}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium text-folix-text-secondary transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-folix-text-secondary transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
           title="Modo de leitura imersivo (F11)"
           aria-label="Ativar modo de leitura imersivo"
         >
           <BookOpen size={14.5} />
-          <span className="hidden xl:inline">Foco</span>
+          <span className="hidden 2xl:inline">Foco</span>
         </button>
 
         <div className="h-4 w-px bg-folix-border mx-0.5" aria-hidden="true" />

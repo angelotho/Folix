@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
@@ -35,7 +36,9 @@ import { CodeBlock } from './CodeBlock';
 
 interface MarkdownViewerProps {
   documentTab: DocumentTab;
-  settings: ReaderSettings;
+  fontFamily: ReaderSettings['fontFamily'];
+  fontSize: ReaderSettings['fontSize'];
+  pageWidth: ReaderSettings['pageWidth'];
   tocItems: TocItem[];
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   articleRef: React.RefObject<HTMLElement>;
@@ -242,133 +245,150 @@ interface MemoizedMarkdownProps {
   onImageClick: (src: string, alt?: string) => void;
 }
 
-const MemoizedMarkdownContent = memo(function MemoizedMarkdownContent({
-  content,
-  directory,
-  onAnchorClick,
-  onOpenRelativeLink,
-  onOpenExternalError,
-  onImageClick,
-}: MemoizedMarkdownProps) {
-  const components: Components = useMemo(
-    () => ({
-      pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-      table: ({ children }) => (
-        <div className="folix-table-wrap">
-          <table>{children}</table>
-        </div>
-      ),
-      blockquote: ({ children }) => {
-        const alert = parseGitHubAlert(children);
-        if (alert && CALLOUT_CONFIG[alert.type]) {
-          const cfg = CALLOUT_CONFIG[alert.type];
-          const Icon = cfg.icon;
-          return (
-            <div
-              className={cn(
-                'folix-callout my-5 rounded-xl border px-4 py-3.5',
-                cfg.containerClass
-              )}
-            >
-              <div
-                className={cn(
-                  'mb-1.5 flex items-center gap-2 text-[13px] font-semibold',
-                  cfg.titleClass
-                )}
-              >
-                <Icon size={15} />
-                <span>{cfg.label}</span>
-              </div>
-              <div className="text-[0.95em] text-folix-text-secondary [&>p:last-child]:mb-0">
-                {alert.content}
-              </div>
-            </div>
-          );
-        }
-        return <blockquote>{children}</blockquote>;
-      },
-      img: ({ src, alt, title }) => (
-        <MarkdownImage
-          src={src}
-          alt={alt}
-          title={title}
-          directory={directory}
-          onImageClick={onImageClick}
-        />
-      ),
-      a: ({ href, children }) => {
-        if (!href) {
-          return <span>{children}</span>;
-        }
-
-        const isAnchor = href.startsWith('#');
-        const isExternal =
-          href.startsWith('http://') ||
-          href.startsWith('https://') ||
-          href.startsWith('mailto:');
-        const isRelativeMd = /\.(md|markdown|mdown|mkd)(#.*)?$/i.test(href);
-
-        return (
-          <a
-            href={href}
-            onClick={(e) => {
-              e.preventDefault();
-              if (isAnchor) {
-                onAnchorClick(decodeURIComponent(href.slice(1)));
-              } else if (isExternal) {
-                window.folixAPI.openExternal(href).then((res) => {
-                  if (!res.ok && res.error) {
-                    onOpenExternalError(res.error);
-                  }
-                });
-              } else if (isRelativeMd) {
-                onOpenRelativeLink(href);
-              }
-            }}
-            title={
-              isExternal
-                ? `Abrir no navegador padrão: ${href}`
-                : isAnchor
-                ? 'Ir para a seção'
-                : href
-            }
-          >
-            {children}
-            {isExternal && (
-              <ExternalLink
-                size={12}
-                className="no-print ml-1 inline-block -translate-y-[1px] opacity-65"
-                aria-hidden="true"
-              />
-            )}
-          </a>
-        );
-      },
-    }),
-    [
-      directory,
+const MemoizedMarkdownContent = memo(
+  function MemoizedMarkdownContent({
+    content,
+    directory,
+    onAnchorClick,
+    onOpenRelativeLink,
+    onOpenExternalError,
+    onImageClick,
+  }: MemoizedMarkdownProps) {
+    const handlersRef = useRef({
       onAnchorClick,
       onOpenRelativeLink,
       onOpenExternalError,
       onImageClick,
-    ]
-  );
+    });
+    handlersRef.current = {
+      onAnchorClick,
+      onOpenRelativeLink,
+      onOpenExternalError,
+      onImageClick,
+    };
 
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[
-        rehypeRaw,
-        [rehypeSanitize, folixSanitizeSchema],
-        rehypeSlug,
-        [rehypeHighlight, { detect: true, ignoreMissing: true }],
-      ]}
-      components={components}
-    >
-      {content}
-    </ReactMarkdown>
-  );
-});
+    const handleImageClick = useCallback((src: string, alt?: string) => {
+      handlersRef.current.onImageClick(src, alt);
+    }, []);
+
+    const components: Components = useMemo(
+      () => ({
+        pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+        table: ({ children }) => (
+          <div className="folix-table-wrap">
+            <table>{children}</table>
+          </div>
+        ),
+        blockquote: ({ children }) => {
+          const alert = parseGitHubAlert(children);
+          if (alert && CALLOUT_CONFIG[alert.type]) {
+            const cfg = CALLOUT_CONFIG[alert.type];
+            const Icon = cfg.icon;
+            return (
+              <div
+                className={cn(
+                  'folix-callout my-5 rounded-xl border px-4 py-3.5',
+                  cfg.containerClass
+                )}
+              >
+                <div
+                  className={cn(
+                    'mb-1.5 flex items-center gap-2 text-[13px] font-semibold',
+                    cfg.titleClass
+                  )}
+                >
+                  <Icon size={15} />
+                  <span>{cfg.label}</span>
+                </div>
+                <div className="text-[0.95em] text-folix-text-secondary [&>p:last-child]:mb-0">
+                  {alert.content}
+                </div>
+              </div>
+            );
+          }
+          return <blockquote>{children}</blockquote>;
+        },
+        img: ({ src, alt, title }) => (
+          <MarkdownImage
+            src={src}
+            alt={alt}
+            title={title}
+            directory={directory}
+            onImageClick={handleImageClick}
+          />
+        ),
+        a: ({ href, children }) => {
+          if (!href) {
+            return <span>{children}</span>;
+          }
+
+          const isAnchor = href.startsWith('#');
+          const isExternal =
+            href.startsWith('http://') ||
+            href.startsWith('https://') ||
+            href.startsWith('mailto:');
+          const isRelativeMd = /\.(md|markdown|mdown|mkd)(#.*)?$/i.test(href);
+
+          return (
+            <a
+              href={href}
+              onClick={(e) => {
+                e.preventDefault();
+                if (isAnchor) {
+                  handlersRef.current.onAnchorClick(
+                    decodeURIComponent(href.slice(1))
+                  );
+                } else if (isExternal) {
+                  window.folixAPI.openExternal(href).then((res) => {
+                    if (!res.ok && res.error) {
+                      handlersRef.current.onOpenExternalError(res.error);
+                    }
+                  });
+                } else if (isRelativeMd) {
+                  handlersRef.current.onOpenRelativeLink(href);
+                }
+              }}
+              title={
+                isExternal
+                  ? `Abrir no navegador padrão: ${href}`
+                  : isAnchor
+                  ? 'Ir para a seção'
+                  : href
+              }
+            >
+              {children}
+              {isExternal && (
+                <ExternalLink
+                  size={12}
+                  className="no-print ml-1 inline-block -translate-y-[1px] opacity-65"
+                  aria-hidden="true"
+                />
+              )}
+            </a>
+          );
+        },
+      }),
+      [directory, handleImageClick]
+    );
+
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[
+          rehypeRaw,
+          [rehypeSanitize, folixSanitizeSchema],
+          rehypeSlug,
+          [rehypeHighlight, { detect: true, ignoreMissing: true }],
+        ]}
+        components={components}
+      >
+        {content}
+      </ReactMarkdown>
+    );
+  },
+  (prev, next) =>
+    prev.content === next.content && prev.directory === next.directory
+);
 
 const PAGE_WIDTH_CLASSES: Record<ReaderSettings['pageWidth'], string> = {
   comfortable: 'max-w-[740px]',
@@ -382,9 +402,11 @@ const FONT_FAMILY_VARS: Record<ReaderSettings['fontFamily'], string> = {
   mono: "'JetBrains Mono', 'Cascadia Code', monospace",
 };
 
-export function MarkdownViewer({
+export const MarkdownViewer = memo(function MarkdownViewer({
   documentTab,
-  settings,
+  fontFamily,
+  fontSize,
+  pageWidth,
   tocItems,
   scrollContainerRef,
   articleRef,
@@ -505,8 +527,8 @@ export function MarkdownViewer({
       <div
         key={`${documentTab.id}:${documentTab.updatedAt}`}
         className={cn(
-          'folix-print-sheet folix-doc-reveal mx-auto w-full rounded-2xl border border-folix-border bg-folix-surface px-7 py-9 shadow-folix-doc transition-all duration-200 sm:px-12 sm:py-12',
-          PAGE_WIDTH_CLASSES[settings.pageWidth]
+          'folix-print-sheet folix-doc-reveal mx-auto w-full rounded-2xl border border-folix-border bg-folix-surface px-7 py-9 shadow-folix-doc transition-[max-width] duration-200 sm:px-12 sm:py-12',
+          PAGE_WIDTH_CLASSES[pageWidth]
         )}
       >
         {/* Subtle editorial document metadata bar */}
@@ -554,8 +576,8 @@ export function MarkdownViewer({
             className="folix-prose"
             style={
               {
-                '--folix-doc-font-scale': settings.fontSize / 100,
-                '--folix-doc-font-family': FONT_FAMILY_VARS[settings.fontFamily],
+                '--folix-doc-font-scale': fontSize / 100,
+                '--folix-doc-font-family': FONT_FAMILY_VARS[fontFamily],
               } as React.CSSProperties
             }
           >
@@ -572,4 +594,4 @@ export function MarkdownViewer({
       </div>
     </div>
   );
-}
+});

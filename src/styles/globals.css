@@ -128,14 +128,58 @@ body,
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
-/* Smooth synchronized transition applied transiently when switching themes */
-html.folix-theme-transition,
-html.folix-theme-transition *,
-html.folix-theme-transition *::before,
-html.folix-theme-transition *::after {
-  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
-  transition-duration: 220ms !important;
-  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
+/* GPU-composited View Transitions for instant, smooth theme switching across large documents */
+html.folix-theme-switching,
+html.folix-theme-switching *,
+html.folix-theme-switching *::before,
+html.folix-theme-switching *::after {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+@keyframes folixThemeViewIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+::view-transition-group(root) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-old(root) {
+  animation: none;
+  opacity: 1;
+  z-index: 1;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  animation: folixThemeViewIn 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  z-index: 2;
+  mix-blend-mode: normal;
+}
+
+/* Lightweight structural fallback when View Transitions API is unavailable */
+html.folix-theme-fallback-transition body,
+html.folix-theme-fallback-transition .folix-print-root,
+html.folix-theme-fallback-transition .folix-print-sheet,
+html.folix-theme-fallback-transition aside {
+  transition-property: background-color, border-color, color;
+  transition-duration: 220ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
 }
 
 /* Custom subtle scrollbars */
@@ -284,7 +328,6 @@ html.folix-theme-transition *::after {
   color: var(--folix-accent);
   text-decoration: none;
   border-bottom: 1px solid var(--folix-accent-ring);
-  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
   font-weight: 500;
 }
 
@@ -293,6 +336,7 @@ html.folix-theme-transition *::after {
   border-bottom-color: var(--folix-accent-hover);
   background-color: var(--folix-accent-soft);
   border-radius: 3px;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
 }
 
 /* Lists & Checklists */
@@ -750,6 +794,24 @@ mark.folix-search-hit-active {
 .folix-loader-bar {
   transform-origin: left center;
   animation: folixLoaderBarFill 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ============================================================================
+   Folix Editorial Markdown Editor (CodeMirror 6)
+   ============================================================================ */
+
+.folix-editor-host .cm-editor {
+  background: transparent;
+  user-select: text;
+}
+
+.folix-editor-host .cm-content {
+  user-select: text;
+  caret-color: var(--folix-accent);
+}
+
+.folix-editor-host .cm-editor.cm-focused {
+  outline: none;
 }
 
 /* ============================================================================
