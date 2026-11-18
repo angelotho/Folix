@@ -1,3 +1,4 @@
+import pkg from '../../package.json';
 import type { ResolvedTheme } from '../types/folix';
 import { cn } from '../utils/format';
 import { FolixLogo } from './FolixLogo';
@@ -209,7 +210,7 @@ export function SplashScreen({
               isDark ? 'text-[#6E7282]' : 'text-[#86837B]'
             )}
           >
-            {isStillLoading ? 'Preparando documentos...' : 'Versão 1.0.8'}
+            {isStillLoading ? 'Preparando documentos...' : `Versão ${pkg.version}`}
           </span>
         </div>
       </div>

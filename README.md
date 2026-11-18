@@ -6,7 +6,7 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.0.8-4F46E5?style=flat-square)
+![Versão](https://img.shields.io/badge/versão-1.0.9-4F46E5?style=flat-square)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -115,7 +115,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.0.8.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.0.9.exe`).
 
 ### Comandos
 
@@ -133,6 +133,10 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.0.9
+- Exibição estritamente contextual de atalhos de teclado na tela inicial (mantendo exclusivamente `Ctrl + O` para abrir arquivos e `Ctrl + ,` para configurações).
+- Reorganização equilibrada e elegante dos atalhos na Home, preservando a disponibilidade integral de todos os atalhos durante a leitura de documentos.
 
 ### v1.0.8
 - Novo indicador visual minimalista de abertura de documentos com o símbolo oficial, nome do arquivo e barra luminosa progressiva, seguido por revelação suave do conteúdo formatado.

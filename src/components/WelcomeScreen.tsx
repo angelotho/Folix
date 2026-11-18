@@ -2,11 +2,11 @@ import {
   Clock,
   FileText,
   FolderOpen,
-  Sparkles,
   Trash2,
   Upload,
   X,
 } from 'lucide-react';
+import pkg from '../../package.json';
 import type { RecentFile, ResolvedTheme } from '../types/folix';
 import { formatRelativeDate } from '../utils/format';
 import { FolixLogo } from './FolixLogo';
@@ -22,11 +22,7 @@ interface WelcomeScreenProps {
 
 const SHORTCUTS = [
   { keys: 'Ctrl + O', label: 'Abrir arquivo' },
-  { keys: 'Ctrl + ,', label: 'Temas e configurações' },
-  { keys: 'Ctrl + F', label: 'Pesquisar' },
-  { keys: 'Ctrl + B', label: 'Sumário lateral' },
-  { keys: 'Ctrl + E', label: 'Exportar PDF' },
-  { keys: 'F11', label: 'Modo imersivo' },
+  { keys: 'Ctrl + ,', label: 'Configurações' },
 ];
 
 export function WelcomeScreen({
@@ -38,7 +34,7 @@ export function WelcomeScreen({
   onClearRecent,
 }: WelcomeScreenProps) {
   return (
-    <div className="relative flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 animate-fade-in">
+    <div className="relative flex flex-1 flex-col overflow-hidden animate-fade-in">
       {/* Subtle ambient radial gradient */}
       <div
         className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -53,25 +49,21 @@ export function WelcomeScreen({
         />
       </div>
 
-      <div className="relative z-10 flex w-full max-w-[740px] flex-col items-center">
-        {/* Identity Hero */}
-        <div className="mb-3 flex items-center gap-2 rounded-full border border-folix-border bg-folix-surface px-3 py-1 text-[11.5px] font-medium text-folix-text-secondary shadow-folix-sm">
-          <Sparkles size={12} className="text-folix-gold" />
-          <span>Folix 1.0.8 • Leitor Editorial Offline</span>
-        </div>
-
-        <div className="mt-2 flex flex-col items-center text-center">
-          <FolixLogo
-            variant="full"
-            resolvedTheme={resolvedTheme}
-            size={62}
-            className="mb-3"
-          />
-          <p className="mt-1 max-w-[490px] text-[15px] leading-relaxed text-folix-text-secondary">
-            Transforme arquivos Markdown em documentos elegantes, organizados e
-            prontos para leitura ou exportação profissional em PDF.
-          </p>
-        </div>
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
+        <div className="flex w-full max-w-[740px] flex-col items-center">
+          {/* Identity Hero */}
+          <div className="flex flex-col items-center text-center">
+            <FolixLogo
+              variant="full"
+              resolvedTheme={resolvedTheme}
+              size={62}
+              className="mb-3"
+            />
+            <p className="mt-1 max-w-[490px] text-[15px] leading-relaxed text-folix-text-secondary">
+              Transforme arquivos Markdown em documentos elegantes, organizados e
+              prontos para leitura ou exportação profissional em PDF.
+            </p>
+          </div>
 
         {/* Primary Action & Drop Zone Card */}
         <div className="mt-8 w-full rounded-2xl border border-folix-border bg-folix-surface p-7 shadow-folix-doc transition-all hover:border-folix-accent/40">
@@ -169,18 +161,24 @@ export function WelcomeScreen({
           </section>
         )}
 
-        {/* Discrete Keyboard Shortcuts */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[12px] text-folix-text-muted">
+        {/* Discrete Contextual Keyboard Shortcuts */}
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12px] text-folix-text-muted">
           {SHORTCUTS.map((item) => (
-            <div key={item.keys} className="flex items-center gap-1.5">
-              <kbd className="rounded-md border border-folix-border bg-folix-surface px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-folix-text-secondary shadow-folix-sm">
+            <div key={item.keys} className="flex items-center gap-2">
+              <kbd className="rounded-md border border-folix-border bg-folix-surface px-2 py-0.5 font-mono text-[11px] font-medium text-folix-text-secondary shadow-folix-sm">
                 {item.keys}
               </kbd>
               <span>{item.label}</span>
             </div>
           ))}
         </div>
+        </div>
       </div>
+
+      {/* Subtle dynamic version signature in bottom-right corner */}
+      <span className="pointer-events-none absolute bottom-3.5 right-5 z-10 select-none text-[11.5px] font-light tracking-wide text-folix-text-muted/80">
+        v{pkg.version}
+      </span>
     </div>
   );
 }
