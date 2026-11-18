@@ -740,7 +740,6 @@ export default function App() {
           activeTab={activeTab}
           tocCount={tocItems.length}
           settings={settings}
-          resolvedTheme={resolvedTheme}
           systemTheme={systemTheme}
           isSearchOpen={isSearchOpen}
           isExportingPdf={isExportingPdf}

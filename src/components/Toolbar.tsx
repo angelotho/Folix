@@ -5,12 +5,10 @@ import {
   FolderOpen,
   ListTree,
   Loader2,
-  Moon,
   Printer,
   RotateCw,
   Search,
   SlidersHorizontal,
-  Sun,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -22,7 +20,6 @@ interface ToolbarProps {
   activeTab: DocumentTab;
   tocCount: number;
   settings: ReaderSettings;
-  resolvedTheme: ResolvedTheme;
   systemTheme: ResolvedTheme;
   isSearchOpen: boolean;
   isExportingPdf: boolean;
@@ -41,7 +38,6 @@ export function Toolbar({
   activeTab,
   tocCount,
   settings,
-  resolvedTheme,
   systemTheme,
   isSearchOpen,
   isExportingPdf,
@@ -60,12 +56,6 @@ export function Toolbar({
   const adjustFontSize = (delta: number) => {
     const next = Math.min(160, Math.max(80, settings.fontSize + delta));
     onUpdateSettings({ fontSize: next });
-  };
-
-  const quickToggleTheme = () => {
-    onUpdateSettings({
-      theme: resolvedTheme === 'dark' ? 'light' : 'dark',
-    });
   };
 
   return (
@@ -184,21 +174,6 @@ export function Toolbar({
             <ZoomIn size={13} />
           </button>
         </div>
-
-        {/* Quick theme switch */}
-        <button
-          type="button"
-          onClick={quickToggleTheme}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-folix-text-secondary transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
-          title={
-            resolvedTheme === 'dark'
-              ? 'Alternar para tema claro'
-              : 'Alternar para tema escuro'
-          }
-          aria-label="Alternar tema claro ou escuro"
-        >
-          {resolvedTheme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-        </button>
 
         {/* Appearance Popover */}
         <div className="relative">
