@@ -15,9 +15,14 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: portable
+      arch:
+        - x64
   icon: build/icon.ico
-  artifactName: Folix-Setup-${version}.${ext}
+portable:
+  artifactName: Folix-${version}.${ext}
 nsis:
+  artifactName: Folix-Setup-${version}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

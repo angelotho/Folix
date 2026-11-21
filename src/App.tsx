@@ -61,6 +61,31 @@ function getFileNameHint(filePath: string): string | undefined {
   return parts[parts.length - 1];
 }
 
+const UNTITLED_BASE_NAME = 'Sem título';
+
+// "Sem título", "Sem título 2", "Sem título 3"... reusing the lowest free number
+function getNextUntitledName(tabs: DocumentTab[]): string {
+  const used = new Set(
+    tabs.filter((t) => t.isUntitled).map((t) => t.fileName)
+  );
+  if (!used.has(UNTITLED_BASE_NAME)) return UNTITLED_BASE_NAME;
+  let n = 2;
+  while (used.has(`${UNTITLED_BASE_NAME} ${n}`)) n += 1;
+  return `${UNTITLED_BASE_NAME} ${n}`;
+}
+
+// Suggest a Windows-safe file name from the document's first H1 (or the provisional title)
+function buildSuggestedFileName(tab: DocumentTab): string {
+  const title = getDocumentTitle(tab.content, tab.fileName)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '')
+    .slice(0, 80)
+    .trim();
+  return `${title || UNTITLED_BASE_NAME}.md`;
+}
+
 export default function App() {
   const [settings, setSettings] = useState<ReaderSettings>(() =>
     loadReaderSettings()
@@ -121,6 +146,7 @@ export default function App() {
   const pendingEditorSyncRef = useRef<Map<string, ViewportSyncAnchor>>(new Map());
   const pendingViewerSyncRef = useRef<Map<string, ViewportSyncAnchor>>(new Map());
   const suppressViewerRevealRef = useRef<Set<string>>(new Set());
+  const pendingEditorFocusTabIdRef = useRef<string | null>(null);
   const editorHandleRef = useRef<MarkdownEditorHandle>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLElement>(null);
@@ -625,8 +651,83 @@ export default function App() {
     setEditorLayout(next);
   }, []);
 
+  const handleSaveTabAs = useCallback(
+    async (tab: DocumentTab): Promise<boolean> => {
+      const isNewDocument = tab.isUntitled === true;
+      setIsSaving(true);
+      try {
+        const res = await window.folixAPI.saveFileAs({
+          defaultPath: isNewDocument
+            ? buildSuggestedFileName(tab)
+            : tab.filePath,
+          content: tab.content,
+          encoding: tab.encoding,
+          lineEnding: tab.lineEnding,
+          isNewDocument,
+        });
+
+        if (!res.ok) {
+          if (!res.cancelled && res.error) {
+            pushToast({
+              type: 'error',
+              title: isNewDocument
+                ? 'Não foi possível salvar o documento'
+                : 'Não foi possível salvar cópia',
+              description: res.error,
+            });
+          }
+          return false;
+        }
+
+        const savedCanonical = res.data.content.replace(/\r\n/g, '\n');
+        setRecentFiles(
+          addRecentFile({
+            filePath: res.data.filePath,
+            fileName: res.data.fileName,
+            directory: res.data.directory,
+          })
+        );
+        setTabs((prevTabs) =>
+          prevTabs.map((t) =>
+            t.id === tab.id
+              ? {
+                  ...t,
+                  filePath: res.data.filePath,
+                  fileName: res.data.fileName,
+                  directory: res.data.directory,
+                  content: savedCanonical,
+                  savedContent: savedCanonical,
+                  encoding: res.data.encoding || t.encoding,
+                  lineEnding: res.data.lineEnding || t.lineEnding,
+                  size: res.data.size,
+                  updatedAt: res.data.updatedAt,
+                  isUntitled: false,
+                }
+              : t
+          )
+        );
+        pushToast(
+          {
+            type: 'success',
+            title: isNewDocument ? 'Documento salvo' : 'Cópia salva com sucesso',
+            description: res.data.filePath,
+          },
+          3200
+        );
+        return true;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [pushToast]
+  );
+
   const handleSaveTab = useCallback(
     async (tab: DocumentTab, forceOverwrite = false): Promise<boolean> => {
+      // First save of a document created in Folix: ask for name and location
+      if (tab.isUntitled) {
+        return handleSaveTabAs(tab);
+      }
       setIsSaving(true);
       try {
         const res = await window.folixAPI.saveFile({
@@ -688,72 +789,46 @@ export default function App() {
         setIsSaving(false);
       }
     },
-    [pushToast]
+    [pushToast, handleSaveTabAs]
   );
 
-  const handleSaveTabAs = useCallback(
-    async (tab: DocumentTab): Promise<boolean> => {
-      setIsSaving(true);
-      try {
-        const res = await window.folixAPI.saveFileAs({
-          defaultPath: tab.filePath,
-          content: tab.content,
-          encoding: tab.encoding,
-          lineEnding: tab.lineEnding,
-        });
+  const handleCreateNewDocument = useCallback(() => {
+    const newId = makeId();
+    setTabs((prevTabs) => {
+      const newTab: DocumentTab = {
+        id: newId,
+        filePath: '',
+        fileName: getNextUntitledName(prevTabs),
+        directory: '',
+        content: '',
+        savedContent: '',
+        encoding: 'utf8',
+        lineEnding: '\n',
+        size: 0,
+        updatedAt: new Date().toISOString(),
+        scrollTop: 0,
+        mode: 'edit',
+        isUntitled: true,
+      };
+      return [...prevTabs, newTab];
+    });
+    pendingEditorFocusTabIdRef.current = newId;
+    setActiveTabId(newId);
+    setIsImmersive(false);
+  }, []);
 
-        if (!res.ok) {
-          if (!res.cancelled && res.error) {
-            pushToast({
-              type: 'error',
-              title: 'Não foi possível salvar cópia',
-              description: res.error,
-            });
-          }
-          return false;
-        }
-
-        const savedCanonical = res.data.content.replace(/\r\n/g, '\n');
-        setRecentFiles(
-          addRecentFile({
-            filePath: res.data.filePath,
-            fileName: res.data.fileName,
-            directory: res.data.directory,
-          })
-        );
-        setTabs((prevTabs) =>
-          prevTabs.map((t) =>
-            t.id === tab.id
-              ? {
-                  ...t,
-                  filePath: res.data.filePath,
-                  fileName: res.data.fileName,
-                  directory: res.data.directory,
-                  content: savedCanonical,
-                  savedContent: savedCanonical,
-                  encoding: res.data.encoding || t.encoding,
-                  lineEnding: res.data.lineEnding || t.lineEnding,
-                  size: res.data.size,
-                  updatedAt: res.data.updatedAt,
-                }
-              : t
-          )
-        );
-        pushToast(
-          {
-            type: 'success',
-            title: 'Cópia salva com sucesso',
-            description: res.data.filePath,
-          },
-          3200
-        );
-        return true;
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [pushToast]
-  );
+  // Place the caret in the editor of a freshly created document
+  useEffect(() => {
+    const pendingId = pendingEditorFocusTabIdRef.current;
+    if (!pendingId || pendingId !== activeTabId || loadingDocInfo) return;
+    if ((activeTab?.mode ?? 'read') !== 'edit') return;
+    const rafId = window.requestAnimationFrame(() => {
+      if (pendingEditorFocusTabIdRef.current !== pendingId) return;
+      pendingEditorFocusTabIdRef.current = null;
+      editorHandleRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [activeTabId, activeTab?.mode, loadingDocInfo]);
 
   const handleSaveActiveFile = useCallback(async () => {
     const tab = activeTabRef.current;
@@ -842,7 +917,7 @@ export default function App() {
 
   const requestReloadActiveFile = useCallback(async () => {
     const tab = activeTabRef.current;
-    if (!tab) return;
+    if (!tab || tab.isUntitled) return;
     if (tab.content !== tab.savedContent) {
       setPendingConfirm({
         kind: 'unsaved',
@@ -1151,6 +1226,12 @@ export default function App() {
         return;
       }
 
+      if (ctrlOrCmd && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        if (!e.repeat) handleCreateNewDocument();
+        return;
+      }
+
       if (!activeTab) return;
 
       if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === 's') {
@@ -1275,6 +1356,7 @@ export default function App() {
     lightboxImage,
     pendingConfirm,
     handleOpenFilesDialog,
+    handleCreateNewDocument,
     handleSaveActiveFile,
     handleSaveActiveFileAs,
     handleChangeMode,
@@ -1355,6 +1437,7 @@ export default function App() {
           onCloseTab={requestCloseTab}
           onShowWelcome={() => setActiveTabId(null)}
           onOpenFiles={handleOpenFilesDialog}
+          onNewDocument={handleCreateNewDocument}
           onQuickToggleTheme={() =>
             updateSettings({
               theme: resolvedTheme === 'dark' ? 'light' : 'dark',
@@ -1390,7 +1473,11 @@ export default function App() {
           onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
           onToggleImmersive={() => setIsImmersive(true)}
           onReloadFile={requestReloadActiveFile}
-          onShowInFolder={() => window.folixAPI.showInFolder(activeTab.filePath)}
+          onShowInFolder={() => {
+            if (!activeTab.isUntitled) {
+              window.folixAPI.showInFolder(activeTab.filePath);
+            }
+          }}
           onUpdateSettings={updateSettings}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onExportPdf={handleExportPdf}
@@ -1510,6 +1597,7 @@ export default function App() {
           recentFiles={recentFiles}
           resolvedTheme={resolvedTheme}
           onOpenFiles={handleOpenFilesDialog}
+          onNewDocument={handleCreateNewDocument}
           onOpenRecent={handleOpenPath}
           onRemoveRecent={(path) => setRecentFiles(removeRecentFile(path))}
           onClearRecent={() => setRecentFiles(clearRecentFiles())}

@@ -19,3 +19,6 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 
+
+# Claude Code (configuração local)
+.claude/settings.local.json

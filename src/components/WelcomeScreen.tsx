@@ -1,5 +1,6 @@
 import {
   Clock,
+  FilePlus2,
   FileText,
   FolderOpen,
   Trash2,
@@ -15,12 +16,14 @@ interface WelcomeScreenProps {
   recentFiles: RecentFile[];
   resolvedTheme: ResolvedTheme;
   onOpenFiles: () => void;
+  onNewDocument: () => void;
   onOpenRecent: (filePath: string) => void;
   onRemoveRecent: (filePath: string) => void;
   onClearRecent: () => void;
 }
 
 const SHORTCUTS = [
+  { keys: 'Ctrl + N', label: 'Novo documento' },
   { keys: 'Ctrl + O', label: 'Abrir arquivo' },
   { keys: 'Ctrl + ,', label: 'Configurações' },
 ];
@@ -29,6 +32,7 @@ export function WelcomeScreen({
   recentFiles,
   resolvedTheme,
   onOpenFiles,
+  onNewDocument,
   onOpenRecent,
   onRemoveRecent,
   onClearRecent,
@@ -74,24 +78,38 @@ export function WelcomeScreen({
               </div>
               <div>
                 <h2 className="text-[16px] font-semibold text-folix-text">
-                  Abra um documento Markdown
+                  Abra ou crie um documento Markdown
                 </h2>
                 <p className="mt-1 text-[13px] leading-relaxed text-folix-text-secondary">
-                  Selecione pelo Explorador do Windows ou arraste e solte um ou
-                  mais arquivos <span className="font-mono text-[12px]">.md</span>{' '}
-                  em qualquer lugar desta janela.
+                  Selecione pelo Explorador do Windows, arraste e solte arquivos{' '}
+                  <span className="font-mono text-[12px]">.md</span> nesta janela
+                  ou comece a escrever em um documento novo.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onOpenFiles}
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-folix-accent px-5 text-[13.5px] font-semibold text-white shadow-folix-sm transition-all hover:bg-folix-accent-hover active:scale-[0.99]"
-            >
-              <FolderOpen size={16} />
-              <span>Abrir arquivo</span>
-            </button>
+            <div className="flex w-full shrink-0 flex-col gap-2 sm:w-[184px]">
+              <button
+                type="button"
+                onClick={onOpenFiles}
+                aria-keyshortcuts="Control+O"
+                title="Abrir arquivo (Ctrl+O)"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-folix-accent px-5 text-[13.5px] font-semibold text-white shadow-folix-sm transition-all hover:bg-folix-accent-hover active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--folix-accent-ring)]"
+              >
+                <FolderOpen size={16} />
+                <span>Abrir arquivo</span>
+              </button>
+              <button
+                type="button"
+                onClick={onNewDocument}
+                aria-keyshortcuts="Control+N"
+                title="Novo documento (Ctrl+N)"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-folix-border bg-folix-surface-elevated px-4 text-[13.5px] font-semibold text-folix-text shadow-folix-sm transition-[background-color,border-color,color,transform] duration-150 hover:border-folix-accent/45 hover:text-folix-accent active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--folix-accent-ring)]"
+              >
+                <FilePlus2 size={16} />
+                <span>Novo documento</span>
+              </button>
+            </div>
           </div>
         </div>
 

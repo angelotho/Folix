@@ -700,10 +700,24 @@ export const MarkdownViewer = memo(function MarkdownViewer({
             <h2 className="text-[17px] font-semibold text-folix-text">
               Documento vazio
             </h2>
-            <p className="mt-1.5 max-w-[360px] text-[13.5px] leading-relaxed text-folix-text-secondary">
-              O arquivo <span className="font-medium">{documentTab.fileName}</span>{' '}
-              não possui conteúdo textual para exibir no momento.
-            </p>
+            {documentTab.isUntitled ? (
+              <p className="mt-1.5 max-w-[360px] text-[13.5px] leading-relaxed text-folix-text-secondary">
+                {(documentTab.mode ?? 'read') === 'edit' ? (
+                  'A prévia formatada aparecerá aqui conforme você escreve.'
+                ) : (
+                  <>
+                    Este novo documento ainda está em branco. Alterne para{' '}
+                    <span className="font-medium">Edição</span> (Ctrl+Shift+E)
+                    para começar a escrever.
+                  </>
+                )}
+              </p>
+            ) : (
+              <p className="mt-1.5 max-w-[360px] text-[13.5px] leading-relaxed text-folix-text-secondary">
+                O arquivo <span className="font-medium">{documentTab.fileName}</span>{' '}
+                não possui conteúdo textual para exibir no momento.
+              </p>
+            )}
           </div>
         ) : (
           <article

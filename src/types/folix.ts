@@ -38,6 +38,8 @@ export interface DocumentTab {
   editorScrollTop?: number;
   mode?: DocumentMode;
   pendingAnchor?: string;
+  /** Documento criado no Folix e ainda não salvo em disco (sem caminho associado). */
+  isUntitled?: boolean;
 }
 
 export interface TocItem {

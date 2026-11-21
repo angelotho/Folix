@@ -73,6 +73,7 @@ const folixAPI = {
     content: string;
     encoding?: FileEncoding;
     lineEnding?: LineEnding;
+    isNewDocument?: boolean;
   }): Promise<FileSaveResponse> => ipcRenderer.invoke('file:save-as', req),
   openRelativeFile: (
     baseDir: string,

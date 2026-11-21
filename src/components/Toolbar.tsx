@@ -4,6 +4,7 @@ import {
   Columns2,
   Eye,
   FileDown,
+  FilePlus2,
   FolderDown,
   FolderOpen,
   ListTree,
@@ -79,6 +80,7 @@ export function Toolbar({
   onPrint,
 }: ToolbarProps) {
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const isUntitled = activeTab.isUntitled === true;
 
   const adjustFontSize = (delta: number) => {
     const next = Math.min(160, Math.max(80, settings.fontSize + delta));
@@ -120,34 +122,51 @@ export function Toolbar({
         <div className="h-4 w-px bg-folix-border" aria-hidden="true" />
 
         {/* File path breadcrumb */}
-        <button
-          type="button"
-          onClick={onShowInFolder}
-          className="group flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left text-[12px] text-folix-text-muted transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
-          title={`Abrir pasta no Explorador de Arquivos:\n${activeTab.filePath}`}
-        >
-          <FolderOpen
-            size={13.5}
-            className="shrink-0 text-folix-text-muted transition-colors group-hover:text-folix-accent"
-          />
-          <span className="hidden md:inline truncate max-w-[260px] lg:max-w-[380px]">
-            {activeTab.directory}
-          </span>
-          <span className="hidden md:inline text-folix-text-muted/50">/</span>
-          <span className="truncate font-medium text-folix-text-secondary group-hover:text-folix-text">
-            {activeTab.fileName}
-          </span>
-        </button>
+        {isUntitled ? (
+          <div
+            className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[12px] text-folix-text-muted"
+            title="Novo documento. Ao salvar (Ctrl+S), você escolherá o nome e a pasta."
+          >
+            <FilePlus2 size={13.5} className="shrink-0 text-folix-accent" />
+            <span className="truncate font-medium text-folix-text-secondary">
+              {activeTab.fileName}
+            </span>
+            <span className="hidden md:inline shrink-0 rounded-md bg-folix-bg px-1.5 py-0.5 text-[10.5px] font-medium text-folix-text-muted">
+              Ainda não salvo
+            </span>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onShowInFolder}
+              className="group flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left text-[12px] text-folix-text-muted transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
+              title={`Abrir pasta no Explorador de Arquivos:\n${activeTab.filePath}`}
+            >
+              <FolderOpen
+                size={13.5}
+                className="shrink-0 text-folix-text-muted transition-colors group-hover:text-folix-accent"
+              />
+              <span className="hidden md:inline truncate max-w-[260px] lg:max-w-[380px]">
+                {activeTab.directory}
+              </span>
+              <span className="hidden md:inline text-folix-text-muted/50">/</span>
+              <span className="truncate font-medium text-folix-text-secondary group-hover:text-folix-text">
+                {activeTab.fileName}
+              </span>
+            </button>
 
-        <button
-          type="button"
-          onClick={onReloadFile}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-folix-text-muted transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
-          title="Recarregar documento do disco (Ctrl+R)"
-          aria-label="Recarregar documento"
-        >
-          <RotateCw size={13.5} />
-        </button>
+            <button
+              type="button"
+              onClick={onReloadFile}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-folix-text-muted transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
+              title="Recarregar documento do disco (Ctrl+R)"
+              aria-label="Recarregar documento"
+            >
+              <RotateCw size={13.5} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Right controls: Mode switch, Save controls, Search, Zoom, Appearance, Immersive, Print, Export PDF */}
@@ -214,14 +233,21 @@ export function Toolbar({
             <button
               type="button"
               onClick={onSaveFile}
-              disabled={!isDirty || isSaving}
+              disabled={(!isDirty && !isUntitled) || isSaving}
               className={cn(
                 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium transition-all',
                 isDirty
                   ? 'border border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20'
-                  : 'text-folix-text-muted opacity-55 cursor-default'
+                  : isUntitled
+                    ? 'text-folix-text-secondary hover:bg-[var(--folix-surface-hover)] hover:text-folix-text disabled:opacity-50'
+                    : 'text-folix-text-muted opacity-55 cursor-default'
               )}
-              title="Salvar alterações no arquivo original (Ctrl+S)"
+              title={
+                isUntitled
+                  ? 'Salvar novo documento: escolher nome e pasta (Ctrl+S)'
+                  : 'Salvar alterações no arquivo original (Ctrl+S)'
+              }
+              aria-keyshortcuts="Control+S"
             >
               <Save size={14} />
               <span className="hidden lg:inline">

@@ -1,6 +1,7 @@
 import {
   Copy,
   FileText,
+  FolderOpen,
   Home,
   Minus,
   Moon,
@@ -23,6 +24,7 @@ interface TitleBarProps {
   onCloseTab: (tabId: string) => void;
   onShowWelcome: () => void;
   onOpenFiles: () => void;
+  onNewDocument: () => void;
   onQuickToggleTheme: () => void;
   onOpenSettings: () => void;
   onMinimize: () => void;
@@ -39,6 +41,7 @@ export function TitleBar({
   onCloseTab,
   onShowWelcome,
   onOpenFiles,
+  onNewDocument,
   onQuickToggleTheme,
   onOpenSettings,
   onMinimize,
@@ -104,9 +107,11 @@ export function TitleBar({
                 }
               }}
               title={
-                isDirty
-                  ? `${tab.filePath}\nAlterações não salvas`
-                  : tab.filePath
+                tab.isUntitled
+                  ? `${tab.fileName}\nNovo documento, ainda não salvo (Ctrl+S para salvar)`
+                  : isDirty
+                    ? `${tab.filePath}\nAlterações não salvas`
+                    : tab.filePath
               }
               role="tab"
               aria-selected={isActive}
@@ -155,12 +160,23 @@ export function TitleBar({
 
         <button
           type="button"
-          onClick={onOpenFiles}
-          className="folix-no-drag flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-lg text-folix-text-secondary transition-colors hover:bg-[var(--folix-surface-hover)] hover:text-folix-text"
-          title="Abrir documento Markdown (Ctrl+O)"
-          aria-label="Abrir novo documento Markdown"
+          onClick={onNewDocument}
+          className="folix-no-drag flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-lg text-folix-text-secondary transition-[background-color,color,transform] duration-150 hover:bg-[var(--folix-surface-hover)] hover:text-folix-text active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--folix-accent-ring)]"
+          title="Novo documento (Ctrl+N)"
+          aria-label="Novo documento Markdown"
+          aria-keyshortcuts="Control+N"
         >
           <Plus size={15} />
+        </button>
+        <button
+          type="button"
+          onClick={onOpenFiles}
+          className="folix-no-drag flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-lg text-folix-text-muted transition-[background-color,color,transform] duration-150 hover:bg-[var(--folix-surface-hover)] hover:text-folix-text active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--folix-accent-ring)]"
+          title="Abrir documento Markdown (Ctrl+O)"
+          aria-label="Abrir documento Markdown"
+          aria-keyshortcuts="Control+O"
+        >
+          <FolderOpen size={14} />
         </button>
 
         {tabs.length > 0 && activeTabId !== null && (

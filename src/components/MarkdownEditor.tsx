@@ -1073,13 +1073,25 @@ const MarkdownEditorInner = forwardRef<MarkdownEditorHandle, MarkdownEditorProps
                 onClick={onSaveFile}
                 disabled={isSaving}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/12 px-2.5 py-1 font-medium text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-500/20 disabled:opacity-60"
-                title="Salvar alterações no arquivo original (Ctrl+S)"
+                title={
+                  documentTab.isUntitled
+                    ? 'Salvar novo documento: escolher nome e pasta (Ctrl+S)'
+                    : 'Salvar alterações no arquivo original (Ctrl+S)'
+                }
               >
                 <Save size={12} />
                 <span>
                   {isSaving ? 'Salvando...' : 'Alterações não salvas'}
                 </span>
               </button>
+            ) : documentTab.isUntitled ? (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-1 text-folix-text-muted"
+                title="Pressione Ctrl+S para escolher o nome e a pasta do documento"
+              >
+                <Save size={12} />
+                <span className="hidden sm:inline">Ainda não salvo</span>
+              </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-2 py-1 text-folix-text-muted">
                 <CheckCircle2 size={12.5} className="text-emerald-500" />

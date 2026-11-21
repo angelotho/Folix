@@ -6,8 +6,8 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.1.2-4F46E5?style=flat-square)
-[![Download v1.1.2](https://img.shields.io/badge/download-Folix--Setup--1.1.2.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.2/Folix-Setup-1.1.2.exe)
+![Versão](https://img.shields.io/badge/versão-1.1.4-4F46E5?style=flat-square)
+[![Download v1.1.4](https://img.shields.io/badge/download-Folix--Setup--1.1.4.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.4/Folix-Setup-1.1.4.exe)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -26,8 +26,8 @@ Em vez de exibir sintaxe bruta, o Folix interpreta o arquivo e entrega uma exper
 
 ## Download (Instalador Windows)
 
-- **Download direto (v1.1.2 — x64)**: [Folix-Setup-1.1.2.exe](https://github.com/angelotho/Folix/releases/download/v1.1.2/Folix-Setup-1.1.2.exe)
-- **Página da Release**: [Folix v1.1.2](https://github.com/angelotho/Folix/releases/tag/v1.1.2)
+- **Download direto (v1.1.4 — x64)**: [Folix-Setup-1.1.4.exe](https://github.com/angelotho/Folix/releases/download/v1.1.4/Folix-Setup-1.1.4.exe)
+- **Página da Release**: [Folix v1.1.4](https://github.com/angelotho/Folix/releases/tag/v1.1.4)
 
 ---
 
@@ -72,6 +72,7 @@ As famílias tipográficas (**Inter**, **Merriweather** e **JetBrains Mono**) s�
 
 | Atalho | Ação |
 | --- | --- |
+| `Ctrl + N` | Criar novo documento Markdown |
 | `Ctrl + O` | Abrir documento(s) Markdown |
 | `Ctrl + ,` | Abrir Configurações e Temas |
 | `Ctrl + W` | Fechar aba atual |
@@ -123,7 +124,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.2.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.4.exe`).
 
 ### Comandos
 
@@ -141,6 +142,15 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.1.4
+- Tela inicial reorganizada: as ações **Abrir arquivo** e **Novo documento** ficam empilhadas, com a mesma largura, liberando mais espaço para o texto de apresentação.
+- Cada versão passa a ser distribuída também como programa portátil (`Folix-<versão>.exe`), que roda sem instalação, além do instalador.
+
+### v1.1.3
+- Criação de novos documentos Markdown diretamente no Folix (`Ctrl + N`, botão **+** na barra de abas ou **Novo documento** na tela inicial), abrindo uma aba **Sem título** pronta para escrever, sem escolher nome ou pasta antes.
+- Primeiro salvamento (`Ctrl + S`) pela janela nativa do Windows, com sugestão de nome a partir do primeiro título do documento e extensão `.md` garantida; os salvamentos seguintes gravam direto no arquivo escolhido.
+- Suporte a vários documentos novos ao mesmo tempo, com proteção contra perda de alterações não salvas ao fechar abas ou o aplicativo.
 
 ### v1.1.2
 - Sincronização estrutural bidirecional precisa entre os modos **Leitura** e **Edição** (e visualização **Dividida**) baseada no mapeamento linha-a-elemento da árvore Markdown (títulos, parágrafos, listas, tabelas, citações, imagens e blocos de código).

@@ -24,6 +24,7 @@ export interface FolixAPI {
     content: string;
     encoding?: FileEncoding;
     lineEnding?: LineEnding;
+    isNewDocument?: boolean;
   }) => Promise<FileSaveResponse>;
   openRelativeFile: (
     baseDir: string,

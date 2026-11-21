@@ -630,31 +630,59 @@ if (!gotTheLock) {
           content: string;
           encoding?: FileEncoding;
           lineEnding?: LineEnding;
+          isNewDocument?: boolean;
         }
       ): Promise<FileSaveResponse> => {
         if (!mainWindow) {
           return { ok: false, error: 'Janela principal indisponível.' };
         }
 
+        const isNewDocument = req?.isNewDocument === true;
+
+        // New documents have no location yet: suggest the user's Documents folder
+        // with a sanitized file name (directory components are discarded).
+        let defaultPath = req.defaultPath;
+        if (isNewDocument) {
+          const suggestedName = path.basename(
+            typeof req.defaultPath === 'string' && req.defaultPath.trim()
+              ? req.defaultPath.trim()
+              : 'Sem título.md'
+          );
+          defaultPath = path.join(app.getPath('documents'), suggestedName);
+        }
+
         const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-          title: 'Salvar documento como',
-          defaultPath: req.defaultPath,
-          filters: [
-            {
-              name: 'Documentos Markdown (*.md)',
-              extensions: ['md', 'markdown', 'mdown', 'mkd'],
-            },
-            { name: 'Texto simples (*.txt)', extensions: ['txt'] },
-          ],
+          title: isNewDocument ? 'Salvar novo documento' : 'Salvar documento como',
+          defaultPath,
+          filters: isNewDocument
+            ? [
+                {
+                  name: 'Documento Markdown (*.md)',
+                  extensions: ['md', 'markdown', 'mdown', 'mkd'],
+                },
+              ]
+            : [
+                {
+                  name: 'Documentos Markdown (*.md)',
+                  extensions: ['md', 'markdown', 'mdown', 'mkd'],
+                },
+                { name: 'Texto simples (*.txt)', extensions: ['txt'] },
+              ],
         });
 
         if (canceled || !filePath) {
           return { ok: false, error: '', cancelled: true };
         }
 
-        const targetPath = path.extname(filePath)
-          ? filePath
-          : `${filePath}.md`;
+        let targetPath: string;
+        if (isNewDocument) {
+          targetPath = isSupportedMarkdownPath(filePath) &&
+            path.extname(filePath).toLowerCase() !== '.txt'
+            ? filePath
+            : `${filePath}.md`;
+        } else {
+          targetPath = path.extname(filePath) ? filePath : `${filePath}.md`;
+        }
         openedDocumentDirs.add(path.resolve(path.dirname(targetPath)));
 
         return writeMarkdownFileSafe({
