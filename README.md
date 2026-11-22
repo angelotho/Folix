@@ -6,8 +6,8 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.1.4-4F46E5?style=flat-square)
-[![Download v1.1.4](https://img.shields.io/badge/download-Folix--Setup--1.1.4.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.4/Folix-Setup-1.1.4.exe)
+![Versão](https://img.shields.io/badge/versão-1.1.5-4F46E5?style=flat-square)
+[![Download v1.1.5](https://img.shields.io/badge/download-Folix--Setup--1.1.5.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.5/Folix-Setup-1.1.5.exe)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -26,8 +26,8 @@ Em vez de exibir sintaxe bruta, o Folix interpreta o arquivo e entrega uma exper
 
 ## Download (Instalador Windows)
 
-- **Download direto (v1.1.4 — x64)**: [Folix-Setup-1.1.4.exe](https://github.com/angelotho/Folix/releases/download/v1.1.4/Folix-Setup-1.1.4.exe)
-- **Página da Release**: [Folix v1.1.4](https://github.com/angelotho/Folix/releases/tag/v1.1.4)
+- **Download direto (v1.1.5 — x64)**: [Folix-Setup-1.1.5.exe](https://github.com/angelotho/Folix/releases/download/v1.1.5/Folix-Setup-1.1.5.exe)
+- **Página da Release**: [Folix v1.1.5](https://github.com/angelotho/Folix/releases/tag/v1.1.5)
 
 ---
 
@@ -124,7 +124,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.4.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.5.exe`).
 
 ### Comandos
 
@@ -142,6 +142,12 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.1.5
+- O Folix passa a avisar quando há uma versão nova: um aviso discreto no canto inferior direito permite **Atualizar** sem sair do aplicativo e, ao fim do download, escolher **Reiniciar** na hora ou instalar **Ao fechar**. Alterações não salvas continuam protegidas antes de reiniciar.
+- Na versão portátil, o aviso traz o botão **Baixar**, que abre a página da nova versão.
+- Nova opção nas Configurações: **Verificar atualizações ao iniciar** (ligada por padrão). A verificação consulta apenas o GitHub e não envia nenhum dado seu.
+- A janela do Folix agora sempre abre maximizada, ocupando a tela toda.
 
 ### v1.1.4
 - Tela inicial reorganizada: as ações **Abrir arquivo** e **Novo documento** ficam empilhadas, com a mesma largura, liberando mais espaço para o texto de apresentação.

@@ -11,6 +11,7 @@ import type {
   RecentFile,
   ResolvedTheme,
   ToastMessage,
+  UpdateStatus,
   ViewportSyncAnchor,
 } from './types/folix';
 import { extractTocFromMarkdown, getDocumentTitle } from './utils/slug';
@@ -51,6 +52,7 @@ import {
 } from './components/UnsavedChangesModal';
 import { SplashScreen } from './components/SplashScreen';
 import { ToastContainer } from './components/ToastContainer';
+import { UpdateNotice } from './components/UpdateNotice';
 
 function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -120,6 +122,10 @@ export default function App() {
   } | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [updateDismissedState, setUpdateDismissedState] = useState<
+    UpdateStatus['state'] | null
+  >(null);
 
   const [showSplash, setShowSplash] = useState(true);
   const [splashExiting, setSplashExiting] = useState(false);
@@ -139,6 +145,8 @@ export default function App() {
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const requestCloseAppRef = useRef<() => void>(() => {});
+  /** O que fazer quando o fluxo de fechar (com proteção de não salvos) termina. */
+  const closeIntentRef = useRef<'close' | 'install-update'>('close');
   const dragCounterRef = useRef(0);
   const scrollPositionsRef = useRef<Map<string, number>>(new Map());
   const editorScrollPositionsRef = useRef<Map<string, number>>(new Map());
@@ -930,7 +938,17 @@ export default function App() {
     await executeReloadTab(tab);
   }, [executeReloadTab]);
 
-  const requestCloseApp = useCallback(() => {
+  const finishCloseApp = useCallback(() => {
+    if (closeIntentRef.current === 'install-update') {
+      void window.folixAPI.installUpdate();
+      return;
+    }
+    void window.folixAPI.confirmCloseWindow();
+  }, []);
+
+  const requestCloseApp = useCallback(
+    (intent: 'close' | 'install-update' = 'close') => {
+    closeIntentRef.current = intent;
     const dirtyTabs = tabsRef.current.filter(
       (t) => t.content !== t.savedContent
     );
@@ -942,9 +960,34 @@ export default function App() {
       });
       return;
     }
-    window.folixAPI.confirmCloseWindow();
+    finishCloseApp();
+    },
+    [finishCloseApp]
+  );
+  requestCloseAppRef.current = () => requestCloseApp('close');
+
+  // Atualizações: escuta o status vindo do processo principal
+  useEffect(() => {
+    return window.folixAPI.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+      // Um estado novo (ex.: download concluído) volta a aparecer mesmo após "Depois"
+      setUpdateDismissedState((dismissed) =>
+        dismissed === status.state ? dismissed : null
+      );
+    });
   }, []);
-  requestCloseAppRef.current = requestCloseApp;
+
+  // Verifica uma vez, depois da abertura, se a opção estiver ligada
+  useEffect(() => {
+    if (showSplash || !settings.checkUpdates) return;
+    const timer = window.setTimeout(() => {
+      void window.folixAPI.checkForUpdate().catch(() => undefined);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [showSplash, settings.checkUpdates]);
+
+  const isUpdateNoticeVisible =
+    updateStatus !== null && updateDismissedState !== updateStatus.state;
 
   const handleConfirmSaveAndContinue = useCallback(async () => {
     if (!pendingConfirm || pendingConfirm.kind !== 'unsaved') return;
@@ -979,9 +1022,9 @@ export default function App() {
         const saved = await handleSaveTab(dirtyTab, false);
         if (!saved) return;
       }
-      window.folixAPI.confirmCloseWindow();
+      finishCloseApp();
     }
-  }, [pendingConfirm, handleSaveTab, forceCloseTab, executeReloadTab]);
+  }, [pendingConfirm, handleSaveTab, forceCloseTab, executeReloadTab, finishCloseApp]);
 
   const handleConfirmDiscardAndContinue = useCallback(async () => {
     if (!pendingConfirm || pendingConfirm.kind !== 'unsaved') return;
@@ -1000,9 +1043,9 @@ export default function App() {
     }
 
     if (action.reason === 'close-app') {
-      window.folixAPI.confirmCloseWindow();
+      finishCloseApp();
     }
-  }, [pendingConfirm, forceCloseTab, executeReloadTab]);
+  }, [pendingConfirm, forceCloseTab, executeReloadTab, finishCloseApp]);
 
   const handleOverwriteConflict = useCallback(async () => {
     if (!pendingConfirm || pendingConfirm.kind !== 'conflict') return;
@@ -1651,7 +1694,25 @@ export default function App() {
       )}
 
       {/* Toast Notifications */}
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <ToastContainer
+        toasts={toasts}
+        onDismiss={dismissToast}
+        raised={isUpdateNoticeVisible}
+      />
+
+      {/* Update Notice (canto inferior direito) */}
+      {isUpdateNoticeVisible && updateStatus && (
+        <UpdateNotice
+          status={updateStatus}
+          onDownload={() => void window.folixAPI.downloadUpdate()}
+          onOpenDownloadPage={() => {
+            void window.folixAPI.openUpdateDownloadPage();
+            setUpdateDismissedState(updateStatus.state);
+          }}
+          onInstallNow={() => requestCloseApp('install-update')}
+          onDismiss={() => setUpdateDismissedState(updateStatus.state)}
+        />
+      )}
 
       {/* Startup Splash Screen */}
       {showSplash && (

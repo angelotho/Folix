@@ -5,6 +5,8 @@ import { cn } from '../utils/format';
 interface ToastContainerProps {
   toasts: ToastMessage[];
   onDismiss: (id: string) => void;
+  /** Sobe a pilha para não cobrir o aviso de atualização no mesmo canto. */
+  raised?: boolean;
 }
 
 const TOAST_STYLES: Record<
@@ -33,12 +35,15 @@ const TOAST_STYLES: Record<
   },
 };
 
-export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
+export function ToastContainer({ toasts, onDismiss, raised = false }: ToastContainerProps) {
   if (toasts.length === 0) return null;
 
   return (
     <div
-      className="no-print fixed bottom-5 right-5 z-50 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-2.5 pointer-events-none"
+      className={cn(
+        'no-print fixed right-5 z-50 flex w-[360px] max-w-[calc(100vw-2.5rem)] flex-col gap-2.5 pointer-events-none',
+        raised ? 'bottom-16' : 'bottom-5'
+      )}
       role="region"
       aria-label="Notificações"
     >

@@ -1,7 +1,7 @@
 {
   "name": "folix",
   "productName": "Folix",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Leitor e visualizador profissional de documentos Markdown para Windows 11",
   "author": "Folix",
   "license": "MIT",
@@ -12,7 +12,7 @@
     "build:electron": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
     "build": "npm.cmd run icons && npm.cmd run build:renderer && npm.cmd run build:electron",
-    "dist": "npm.cmd run build && electron-builder --win"
+    "dist": "npm.cmd run build && electron-builder --win --publish never"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -26,6 +26,7 @@
     "@fontsource/merriweather": "^5.1.0",
     "@lezer/highlight": "^1.2.5",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.3.9",
     "github-slugger": "^2.0.0",
     "highlight.js": "^11.10.0",
     "lucide-react": "^0.460.0",

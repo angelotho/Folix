@@ -39,6 +39,12 @@ export type FileSaveResponse =
       cancelled?: boolean;
     };
 
+export type UpdateStatus =
+  | { state: 'available'; version: string; canAutoInstall: boolean }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; version: string };
+
 const folixAPI = {
   // Window controls
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
@@ -125,6 +131,19 @@ const folixAPI = {
     ) => callback(theme);
     ipcRenderer.on('theme:system-changed', listener);
     return () => ipcRenderer.removeListener('theme:system-changed', listener);
+  },
+
+  // App updates (GitHub Releases)
+  checkForUpdate: (): Promise<void> => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('update:download'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+  openUpdateDownloadPage: (): Promise<void> =>
+    ipcRenderer.invoke('update:open-download-page'),
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) =>
+      callback(status);
+    ipcRenderer.on('update:status', listener);
+    return () => ipcRenderer.removeListener('update:status', listener);
   },
 };
 

@@ -6,6 +6,7 @@ import type {
   FileSaveResponse,
   LineEnding,
   RelativeFileReadResponse,
+  UpdateStatus,
 } from './types/folix';
 
 export interface FolixAPI {
@@ -43,6 +44,11 @@ export interface FolixAPI {
   getSystemTheme: () => Promise<'light' | 'dark'>;
   setThemePreference: (theme: 'light' | 'dark' | 'system') => Promise<void>;
   onSystemThemeChange: (callback: (theme: 'light' | 'dark') => void) => () => void;
+  checkForUpdate: () => Promise<void>;
+  downloadUpdate: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  openUpdateDownloadPage: () => Promise<void>;
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
 }
 
 declare global {

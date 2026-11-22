@@ -97,3 +97,10 @@ Toda a interface, mensagens de erro e notas da versão são em **português bras
 ## Versionamento
 
 Após `X.Y.9` vem `X.(Y+1).0` — nunca `X.Y.10`. A versão aparece no `package.json`, no `package-lock.json` e em vários pontos do `README.md` (badges, links de download e "Notas da Versão"); mantenha todos sincronizados.
+
+### Publicação da release (obrigatório)
+
+O app verifica atualizações pelo GitHub Releases (`electron-updater`, ver [electron/updater.ts](electron/updater.ts)). Toda vez que gerar uma versão, **sempre** instrua o usuário a:
+
+- Anexar à release `vX.Y.Z` no GitHub, além de `release/Folix-Setup-X.Y.Z.exe` e `release/Folix-X.Y.Z.exe`, também `release/latest.yml` e `release/Folix-Setup-X.Y.Z.exe.blockmap`. Sem o `latest.yml`, a atualização automática não encontra a versão nova.
+- Publicar a release como **Latest**, nunca como rascunho nem pré-release.

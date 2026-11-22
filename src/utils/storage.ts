@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 100,
   pageWidth: 'comfortable',
   sidebarOpen: true,
+  checkUpdates: true,
 };
 
 export function resolveInitialTheme(theme: ThemeMode): ResolvedTheme {
@@ -65,7 +66,12 @@ export function loadReaderSettings(): ReaderSettings {
         ? parsed.sidebarOpen
         : DEFAULT_SETTINGS.sidebarOpen;
 
-    return { theme, fontFamily, fontSize, pageWidth, sidebarOpen };
+    const checkUpdates =
+      typeof parsed.checkUpdates === 'boolean'
+        ? parsed.checkUpdates
+        : DEFAULT_SETTINGS.checkUpdates;
+
+    return { theme, fontFamily, fontSize, pageWidth, sidebarOpen, checkUpdates };
   } catch {
     return DEFAULT_SETTINGS;
   }

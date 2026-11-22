@@ -11,6 +11,7 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { setupAutoUpdater } from './updater';
 
 const ALLOWED_MARKDOWN_EXTENSIONS = new Set([
   '.md',
@@ -449,6 +450,8 @@ function createMainWindow(): BrowserWindow {
   });
 
   win.once('ready-to-show', () => {
+    // Sempre abre maximizado (janela ocupando a tela toda, com barra de tarefas visível)
+    win.maximize();
     win.show();
   });
 
@@ -562,6 +565,13 @@ if (!gotTheLock) {
     });
 
     mainWindow = createMainWindow();
+
+    setupAutoUpdater({
+      getWindow: () => mainWindow,
+      allowForceClose: () => {
+        isForceClosingWindow = true;
+      },
+    });
 
     // Window control IPC
     ipcMain.handle('window:minimize', () => {

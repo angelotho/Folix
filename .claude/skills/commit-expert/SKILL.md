@@ -42,6 +42,6 @@ git commit -m "<tipo>(<escopo>): <resumo> and release v[NOVA_VERSAO]"
 git push origin main
 ```
 
-Lembre o usuário de que `npm.cmd run dist` gera o instalador (`release/Folix-Setup-[NOVA_VERSAO].exe`) e o programa portátil (`release/Folix-[NOVA_VERSAO].exe`), e que o instalador precisa ser anexado à release `v[NOVA_VERSAO]` no GitHub para que os links do README funcionem.
+Lembre o usuário de que `npm.cmd run dist` gera o instalador (`release/Folix-Setup-[NOVA_VERSAO].exe`) e o programa portátil (`release/Folix-[NOVA_VERSAO].exe`), e que o instalador precisa ser anexado à release `v[NOVA_VERSAO]` no GitHub para que os links do README funcionem. Para a atualização automática funcionar, anexe também `release/latest.yml` e `release/Folix-Setup-[NOVA_VERSAO].exe.blockmap`, e publique a release como **Latest** (não como rascunho nem pré-release).
 
 Seu trabalho finaliza ao exibir esse bloco, aguardando o usuário copiar e colar.

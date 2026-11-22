@@ -21,7 +21,15 @@ export interface ReaderSettings {
   fontSize: number; // percentage: 80..160 (default 100)
   pageWidth: PageWidthPreference;
   sidebarOpen: boolean;
+  /** Verifica no GitHub, ao iniciar, se há uma versão nova do Folix. */
+  checkUpdates: boolean;
 }
+
+export type UpdateStatus =
+  | { state: 'available'; version: string; canAutoInstall: boolean }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; version: string };
 
 export interface DocumentTab {
   id: string;

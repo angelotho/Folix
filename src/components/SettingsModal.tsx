@@ -365,6 +365,40 @@ export function SettingsModal({
                 />
               </button>
             </div>
+
+            {/* Update Check Toggle */}
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-folix-border bg-folix-surface-elevated px-4 py-3">
+              <div>
+                <p className="text-[12.5px] font-medium text-folix-text">
+                  Verificar atualizações ao iniciar
+                </p>
+                <p className="text-[11.5px] text-folix-text-muted">
+                  Consulta o GitHub em busca de uma versão nova. Nenhum dado seu é enviado.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.checkUpdates}
+                onClick={() =>
+                  onUpdate({ checkUpdates: !settings.checkUpdates })
+                }
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors',
+                  settings.checkUpdates
+                    ? 'border-folix-accent bg-folix-accent'
+                    : 'border-folix-border bg-folix-bg'
+                )}
+                aria-label="Verificar atualizações ao iniciar"
+              >
+                <span
+                  className={cn(
+                    'inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform',
+                    settings.checkUpdates ? 'translate-x-4' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
           </section>
         </div>
 

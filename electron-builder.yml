@@ -10,6 +10,12 @@ files:
   - build/icon.ico
   - package.json
 asar: true
+# Gera latest.yml (+ .blockmap) para o electron-updater. A publicação é manual:
+# anexe Folix-Setup-<v>.exe, Folix-Setup-<v>.exe.blockmap e latest.yml à release.
+publish:
+  provider: github
+  owner: angelotho
+  repo: Folix
 win:
   target:
     - target: nsis
