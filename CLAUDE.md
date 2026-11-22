@@ -104,3 +104,13 @@ O app verifica atualizações pelo GitHub Releases (`electron-updater`, ver [ele
 
 - Anexar à release `vX.Y.Z` no GitHub, além de `release/Folix-Setup-X.Y.Z.exe` e `release/Folix-X.Y.Z.exe`, também `release/latest.yml` e `release/Folix-Setup-X.Y.Z.exe.blockmap`. Sem o `latest.yml`, a atualização automática não encontra a versão nova.
 - Publicar a release como **Latest**, nunca como rascunho nem pré-release.
+
+### "Enviar tudo para o repositório"
+
+Quando o usuário pedir para **enviar/subir tudo para o repositório**, faça o ciclo completo sem parar para perguntar, executando os comandos (isso substitui o "não executa" da `commit-expert`):
+
+1. Subir a versão e atualizar `package.json`, `package-lock.json` e `README.md` (incluindo "Notas da Versão"), conforme a `commit-expert`.
+2. `npm.cmd run dist` (gera instalador, portátil, `latest.yml` e `.blockmap`).
+3. Commit (Conventional Commits em inglês) e `git push origin main`.
+4. Criar a release `vX.Y.Z` com `gh release create vX.Y.Z --latest`, título `Folix vX.Y.Z`, notas iguais às de "Notas da Versão" e os quatro anexos: `Folix-Setup-X.Y.Z.exe`, `Folix-X.Y.Z.exe`, `latest.yml` e `Folix-Setup-X.Y.Z.exe.blockmap`.
+5. Conferir que a release está publicada como **Latest** com os quatro arquivos e informar o link.
