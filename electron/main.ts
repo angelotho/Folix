@@ -495,6 +495,14 @@ function createMainWindow(): BrowserWindow {
   return win;
 }
 
+// Identidade na barra de tarefas: o instalador cria os atalhos com o appId
+// `com.folix.app`. A versão portátil usa um ID próprio para que o Windows não a
+// agrupe sob o ícone fixado da versão instalada (o que fazia parecer que o app
+// "voltava" de versão ao reabrir pelo ícone fixado).
+app.setAppUserModelId(
+  process.env.PORTABLE_EXECUTABLE_FILE ? 'com.folix.app.portable' : 'com.folix.app',
+);
+
 // Enforce single instance on Windows 11
 const gotTheLock = app.requestSingleInstanceLock();
 
