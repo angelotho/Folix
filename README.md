@@ -6,8 +6,8 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.1.6-4F46E5?style=flat-square)
-[![Download v1.1.6](https://img.shields.io/badge/download-Folix--Setup--1.1.6.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.6/Folix-Setup-1.1.6.exe)
+![Versão](https://img.shields.io/badge/versão-1.1.7-4F46E5?style=flat-square)
+[![Download v1.1.7](https://img.shields.io/badge/download-Folix--Setup--1.1.7.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.7/Folix-Setup-1.1.7.exe)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -26,8 +26,8 @@ Em vez de exibir sintaxe bruta, o Folix interpreta o arquivo e entrega uma exper
 
 ## Download (Instalador Windows)
 
-- **Download direto (v1.1.6 — x64)**: [Folix-Setup-1.1.6.exe](https://github.com/angelotho/Folix/releases/download/v1.1.6/Folix-Setup-1.1.6.exe)
-- **Página da Release**: [Folix v1.1.6](https://github.com/angelotho/Folix/releases/tag/v1.1.6)
+- **Download direto (v1.1.7 — x64)**: [Folix-Setup-1.1.7.exe](https://github.com/angelotho/Folix/releases/download/v1.1.7/Folix-Setup-1.1.7.exe)
+- **Página da Release**: [Folix v1.1.7](https://github.com/angelotho/Folix/releases/tag/v1.1.7)
 
 ---
 
@@ -124,7 +124,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.6.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.7.exe`).
 
 ### Comandos
 
@@ -142,6 +142,9 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.1.7
+- No modo Leitura, cada Enter dado no modo Edição agora vira uma nova linha. Listas escritas linha a linha (como `001 - ...`, `002 - ...`) não ficam mais emendadas em um único parágrafo, e o PDF exportado segue o mesmo resultado.
 
 ### v1.1.6
 - A versão portátil agora aparece com um ícone próprio na barra de tarefas, separado do Folix instalado. Assim fica claro qual versão está aberta, e reabrir pelo ícone fixado não parece mais "voltar" para uma versão antiga.
