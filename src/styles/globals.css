@@ -383,20 +383,29 @@ html.folix-theme-fallback-transition aside {
   padding-left: 0.35em;
 }
 
+/*
+ * O item de tarefa fica em fluxo normal (não flex): com flex, cada trecho
+ * inline (texto, negrito, link, código) virava um item separado e o conteúdo
+ * se espalhava em colunas em itens longos. O checkbox é posicionado na
+ * margem esquerda, alinhado à primeira linha, e o texto quebra livremente.
+ */
 .folix-prose li.task-list-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65em;
-  padding-left: 0;
+  position: relative;
+  list-style: none;
+  padding-left: 1.7em;
+  min-width: 0;
 }
 
 .folix-prose li.task-list-item input[type='checkbox'] {
   appearance: none;
   -webkit-appearance: none;
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  /* centraliza o checkbox (1.05em) na primeira linha (line-height 1.76) */
+  top: 0.355em;
   width: 1.05em;
   height: 1.05em;
-  margin-top: 0.36em;
+  margin: 0;
   border-radius: 0.28em;
   border: 1.5px solid var(--folix-border);
   background-color: var(--folix-surface-elevated);
@@ -419,6 +428,35 @@ html.folix-theme-fallback-transition aside {
   border: solid #ffffff;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
+}
+
+/* Math (KaTeX) — fórmulas longas rolam dentro do próprio bloco em vez de
+   estourar a largura da página. */
+.folix-prose .katex {
+  font-size: 1.1em;
+  color: var(--folix-text);
+}
+
+.folix-prose .folix-math-block,
+.folix-prose .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.folix-prose .folix-math-block {
+  margin: 1.1em 0;
+  padding: 0.15em 0;
+}
+
+.folix-prose .folix-math-block .katex-display {
+  margin: 0;
+}
+
+.folix-prose .katex-error {
+  color: var(--folix-text-muted) !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.86em;
 }
 
 /* Blockquotes */

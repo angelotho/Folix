@@ -6,8 +6,8 @@
 
 **Leitor e visualizador desktop profissional de documentos Markdown para Windows 11.**
 
-![Versão](https://img.shields.io/badge/versão-1.1.7-4F46E5?style=flat-square)
-[![Download v1.1.7](https://img.shields.io/badge/download-Folix--Setup--1.1.7.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.7/Folix-Setup-1.1.7.exe)
+![Versão](https://img.shields.io/badge/versão-1.1.8-4F46E5?style=flat-square)
+[![Download v1.1.8](https://img.shields.io/badge/download-Folix--Setup--1.1.8.exe-4F46E5?style=flat-square&logo=windows)](https://github.com/angelotho/Folix/releases/download/v1.1.8/Folix-Setup-1.1.8.exe)
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%2011%20x64-0EA5E9?style=flat-square)
 ![Offline](https://img.shields.io/badge/modo-100%25%20Offline-10B981?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-6366F1?style=flat-square)
@@ -26,8 +26,8 @@ Em vez de exibir sintaxe bruta, o Folix interpreta o arquivo e entrega uma exper
 
 ## Download (Instalador Windows)
 
-- **Download direto (v1.1.7 — x64)**: [Folix-Setup-1.1.7.exe](https://github.com/angelotho/Folix/releases/download/v1.1.7/Folix-Setup-1.1.7.exe)
-- **Página da Release**: [Folix v1.1.7](https://github.com/angelotho/Folix/releases/tag/v1.1.7)
+- **Download direto (v1.1.8 — x64)**: [Folix-Setup-1.1.8.exe](https://github.com/angelotho/Folix/releases/download/v1.1.8/Folix-Setup-1.1.8.exe)
+- **Página da Release**: [Folix v1.1.8](https://github.com/angelotho/Folix/releases/tag/v1.1.8)
 
 ---
 
@@ -49,6 +49,7 @@ As famílias tipográficas (**Inter**, **Merriweather** e **JetBrains Mono**) s�
 
 ### Leitura e Renderização Markdown
 - **GitHub Flavored Markdown (GFM)**: títulos (`H1`–`H6`), parágrafos, negrito, itálico, tachado, listas numeradas e com marcadores, checklists, tabelas estilizadas, divisores e citações.
+- **Fórmulas Matemáticas (LaTeX)**: `$...$` no texto, `$$...$$` em bloco e blocos ` ```math `, renderizados localmente com KaTeX.
 - **Alertas Editoriais**: renderização dedicada para callouts `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` e `[!CAUTION]`.
 - **Blocos de Código Modernos**: realce de sintaxe automático (`highlight.js`), identificação da linguagem e botão de cópia rápida com confirmação visual.
 - **Imagens Relativas e Lightbox**: carregamento seguro de imagens locais referenciadas relativamente ao documento (`folix-asset://`), com visualização ampliada ao clicar e fallback elegante caso a imagem esteja ausente.
@@ -91,7 +92,7 @@ As famílias tipográficas (**Inter**, **Merriweather** e **JetBrains Mono**) s�
 
 - **Desktop & Empacotamento**: Electron 33 + `electron-builder` (NSIS para Windows x64)
 - **Interface**: React 18, TypeScript, Tailwind CSS e ícones `lucide-react`
-- **Pipeline Markdown**: `react-markdown`, `remark-gfm`, `rehype-raw`, `rehype-sanitize`, `rehype-slug`, `rehype-highlight` e `github-slugger`
+- **Pipeline Markdown**: `react-markdown`, `remark-gfm`, `rehype-raw`, `rehype-sanitize`, `rehype-slug`, `rehype-highlight`, `remark-math` + `rehype-katex` (KaTeX) e `github-slugger`
 - **Build Frontend**: Vite 5
 
 ```text
@@ -124,7 +125,7 @@ Folix/
 - **Windows 10/11 (x64)**
 - **Node.js 20+** e **npm**
 
-> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.7.exe`).
+> Usuários finais não precisam de Node.js ou ferramentas de programação: basta executar o instalador gerado (`Folix-Setup-1.1.8.exe`).
 
 ### Comandos
 
@@ -142,6 +143,10 @@ npm.cmd run dist
 ---
 
 ## Notas da Versão
+
+### v1.1.8
+- Itens de checklist (`- [ ]` / `- [x]`) com textos longos, negritos e links não se espalham mais em colunas no modo Leitura: o texto quebra linha normalmente e se adapta a qualquer tamanho de janela, resolução ou escala do Windows.
+- Suporte a fórmulas matemáticas em LaTeX: `$...$` no meio do texto, `$$...$$` em bloco e blocos ` ```math `, renderizados com KaTeX também no PDF e totalmente offline. Valores em reais como `R$ 1.283,04` continuam aparecendo como texto normal.
 
 ### v1.1.7
 - No modo Leitura, cada Enter dado no modo Edição agora vira uma nova linha. Listas escritas linha a linha (como `001 - ...`, `002 - ...`) não ficam mais emendadas em um único parágrafo, e o PDF exportado segue o mesmo resultado.

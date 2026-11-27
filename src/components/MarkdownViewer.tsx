@@ -15,6 +15,9 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeSlug from 'rehype-slug';
 import rehypeHighlight from 'rehype-highlight';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import {
   AlertTriangle,
   Bookmark,
@@ -44,6 +47,7 @@ import {
   extractSourceLineProps,
   rehypeSourceLines,
 } from '../utils/scrollSync';
+import { protectLoneDollars, remarkFolixMath } from '../utils/markdownMath';
 import { CodeBlock } from './CodeBlock';
 
 interface MarkdownViewerProps {
@@ -72,6 +76,10 @@ const folixSanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
+    div: [
+      ...(defaultSchema.attributes?.div || []),
+      ['className', 'folix-math-block'],
+    ],
     ul: [...(defaultSchema.attributes?.ul || []), ['className']],
     li: [...(defaultSchema.attributes?.li || []), ['className']],
     input: [
@@ -428,19 +436,24 @@ const MemoizedMarkdownContent = memo(
       [directory, handleImageClick]
     );
 
+    const mathSafeContent = useMemo(() => protectLoneDollars(content), [content]);
+
     return (
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkFolixMath, remarkBreaks]}
         rehypePlugins={[
           rehypeRaw,
           [rehypeSanitize, folixSanitizeSchema],
           rehypeSlug,
           rehypeSourceLines,
+          // KaTeX runs after sanitize: its output is generated locally from
+          // the formula text, and `trust: false` blocks \href, \url, \html*.
+          [rehypeKatex, { strict: false, trust: false, throwOnError: false }],
           [rehypeHighlight, { detect: true, ignoreMissing: true }],
         ]}
         components={components}
       >
-        {content}
+        {mathSafeContent}
       </ReactMarkdown>
     );
   },
